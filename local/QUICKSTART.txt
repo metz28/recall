@@ -1,0 +1,64 @@
+================================================================================
+                    RECALL - QUICK START GUIDE
+================================================================================
+
+FIRST TIME SETUP:
+-----------------
+    python local/recall.py setup
+
+START RECALL:
+-------------
+    python local/recall.py run
+
+Then open in your browser:
+    → API Docs: http://localhost:8000/docs
+    → Health: http://localhost:8000/health
+    → Qdrant: http://localhost:6333/dashboard
+
+STOP RECALL:
+------------
+    Press Ctrl+C in the terminal
+
+================================================================================
+
+WHAT YOU CAN DO:
+----------------
+
+1. Upload Documents
+   - PDFs, Word docs (.docx), text files, markdown
+   - Go to http://localhost:8000/docs
+   - Try the POST /api/ingest/upload endpoint
+
+2. Search Your Knowledge
+   - Semantic search across all documents
+   - Try GET /api/search?query=your+question
+
+3. Ask Questions (RAG Chat)
+   - Get answers grounded in your documents
+   - Try POST /api/chat
+
+================================================================================
+
+TROUBLESHOOTING:
+----------------
+
+If Qdrant won't start:
+    → Use Docker instead: docker run -p 6333:6333 qdrant/qdrant
+    → Then run: python local/recall.py api
+
+If you need to reinstall:
+    → Delete the venv/ folder
+    → Run: python local/recall.py setup
+
+================================================================================
+
+PROJECT STRUCTURE:
+------------------
+    local/          ← Setup scripts (you are here)
+    backend/        ← FastAPI application code
+    data/           ← Your documents and database (created automatically)
+    venv/           ← Python virtual environment (created automatically)
+
+================================================================================
+For more details, see: local/README.md
+================================================================================

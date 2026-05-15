@@ -33,6 +33,12 @@ data/
 *.sqlite
 *.sqlite3
 
+# Qdrant
+qdrant/
+qdrant_standalone/*.exe
+qdrant_standalone/*.zip
+qdrant_standalone/*.tar.gz
+
 # IDE
 .vscode/
 .idea/

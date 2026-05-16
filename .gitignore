@@ -68,3 +68,6 @@ claude.md
 # Cache
 *.cache
 .cache/
+
+# Documentation and notes
+mds/

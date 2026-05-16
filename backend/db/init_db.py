@@ -45,16 +45,38 @@ async def init_sqlite():
             )
         """)
 
-        # Entities table (for Phase 2)
+        # Entities table
         await db.execute("""
             CREATE TABLE IF NOT EXISTS entities (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
                 entity_type TEXT NOT NULL,
                 description TEXT,
+                mention_count INTEGER DEFAULT 1,
+                variants TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+
+        # Entity mentions table (links entities to chunks)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS entity_mentions (
+                id TEXT PRIMARY KEY,
+                entity_id TEXT NOT NULL,
+                chunk_id TEXT NOT NULL,
+                context TEXT,
+                position INTEGER,
+                FOREIGN KEY (entity_id) REFERENCES entities(id) ON DELETE CASCADE,
+                FOREIGN KEY (chunk_id) REFERENCES chunks(id) ON DELETE CASCADE
+            )
+        """)
+
+        # Create indices for performance
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_entity_mentions_entity ON entity_mentions(entity_id)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_entity_mentions_chunk ON entity_mentions(chunk_id)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_entities_name ON entities(name)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(entity_type)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_chunks_document ON chunks(document_id)")
 
         await db.commit()
         print("✅ SQLite initialized")

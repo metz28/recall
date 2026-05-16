@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from core.config import settings
-from api import ingest, search, chat
+from api import ingest, search, chat, entities
 from db.init_db import init_databases
 
 
@@ -23,6 +23,17 @@ async def lifespan(app: FastAPI):
     from services.embedding import get_embedding_model
     get_embedding_model()
     print("✅ Embedding model loaded")
+
+    # Preload spaCy model for entity extraction
+    if settings.entity_extraction_enabled:
+        print("📦 Loading spaCy model for entity extraction...")
+        from services.entity_extraction import get_spacy_model
+        try:
+            get_spacy_model(settings.spacy_model)
+            print("✅ spaCy model loaded")
+        except Exception as e:
+            print(f"⚠️  Could not load spaCy model: {e}")
+            print("⚠️  Entity extraction will be disabled")
 
     yield
     print("👋 Shutting down Recall...")
@@ -48,6 +59,7 @@ app.add_middleware(
 app.include_router(ingest.router, prefix="/api/ingest", tags=["ingest"])
 app.include_router(search.router, prefix="/api/search", tags=["search"])
 app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
+app.include_router(entities.router, prefix="/api/entities", tags=["entities"])
 
 
 @app.get("/")

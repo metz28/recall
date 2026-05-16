@@ -29,6 +29,12 @@ class Settings(BaseSettings):
     chunk_size: int = 512
     chunk_overlap: int = 50
 
+    # Entity Extraction Configuration
+    spacy_model: str = "en_core_web_sm"
+    entity_extraction_enabled: bool = True
+    entity_types: str = "PERSON,ORG,GPE,PRODUCT,EVENT,WORK_OF_ART,LAW,NORP,FAC"
+    entity_context_window: int = 100
+
     # Application Settings
     max_upload_size: int = 50  # MB
     allowed_extensions: str = ".txt,.pdf,.docx,.md,.html"
@@ -40,6 +46,10 @@ class Settings(BaseSettings):
     @property
     def allowed_extensions_list(self) -> list[str]:
         return [ext.strip() for ext in self.allowed_extensions.split(",")]
+
+    @property
+    def entity_types_set(self) -> set[str]:
+        return {et.strip() for et in self.entity_types.split(",")}
 
 
 settings = Settings()

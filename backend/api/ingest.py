@@ -11,9 +11,12 @@ from core.config import settings
 from services.document_loader import load_document
 from services.chunking import chunk_text
 from services.embedding import embed_texts
+from services.entity_extraction import extract_entities_batch, deduplicate_entities
+from services.graph_service import store_entities_in_graph
 from models.document import DocumentMetadata, Chunk
 from qdrant_client import QdrantClient
 from qdrant_client.models import PointStruct
+import json
 
 router = APIRouter()
 
@@ -66,6 +69,27 @@ async def upload_document(file: UploadFile = File(...)):
         chunks = chunk_text(text_content)
         doc_metadata.num_chunks = len(chunks)
 
+        # Extract entities from chunks (if enabled)
+        all_entity_mentions = []
+        if settings.entity_extraction_enabled:
+            try:
+                print(f"🔍 Extracting entities from {len(chunks)} chunks...")
+                chunk_entities = extract_entities_batch(
+                    chunks,
+                    entity_types=settings.entity_types_set,
+                    model_name=settings.spacy_model,
+                    context_window=settings.entity_context_window
+                )
+                # Flatten all mentions for deduplication
+                for chunk_idx, entities in enumerate(chunk_entities):
+                    for entity in entities:
+                        entity['chunk_index'] = chunk_idx
+                        all_entity_mentions.append(entity)
+                print(f"✅ Extracted {len(all_entity_mentions)} entity mentions")
+            except Exception as e:
+                print(f"⚠️  Entity extraction failed: {e}")
+                # Continue with ingestion even if entity extraction fails
+
         # Generate embeddings
         embeddings = embed_texts(chunks)
 
@@ -90,8 +114,10 @@ async def upload_document(file: UploadFile = File(...)):
 
             # Store chunks in SQLite and prepare for Qdrant
             chunk_points = []
+            chunk_id_map = {}  # Map chunk_index -> chunk_id
             for idx, (chunk_content, embedding) in enumerate(zip(chunks, embeddings)):
                 chunk_id = str(uuid4())
+                chunk_id_map[idx] = chunk_id
 
                 # Store in SQLite
                 await db.execute(
@@ -115,6 +141,73 @@ async def upload_document(file: UploadFile = File(...)):
                     )
                 )
 
+            # Store entities if extracted
+            if all_entity_mentions and settings.entity_extraction_enabled:
+                try:
+                    # Deduplicate entities
+                    entities_map = deduplicate_entities(all_entity_mentions)
+                    print(f"📊 Found {len(entities_map)} unique entities")
+
+                    # Store unique entities
+                    entity_id_map = {}  # Map normalized_name -> entity_id
+                    for norm_name, entity_data in entities_map.items():
+                        entity_id = str(uuid4())
+                        entity_id_map[norm_name] = entity_id
+
+                        await db.execute(
+                            """INSERT OR REPLACE INTO entities
+                               (id, name, entity_type, mention_count, variants)
+                               VALUES (?, ?, ?, ?, ?)""",
+                            (
+                                entity_id,
+                                entity_data['canonical_name'],
+                                entity_data['type'],
+                                entity_data['mention_count'],
+                                json.dumps(entity_data['variants'])
+                            )
+                        )
+
+                    # Store entity mentions
+                    for mention in all_entity_mentions:
+                        chunk_idx = mention['chunk_index']
+                        chunk_id = chunk_id_map[chunk_idx]
+                        entity_id = entity_id_map[mention['normalized_name']]
+
+                        mention_id = str(uuid4())
+                        await db.execute(
+                            """INSERT INTO entity_mentions
+                               (id, entity_id, chunk_id, context, position)
+                               VALUES (?, ?, ?, ?, ?)""",
+                            (
+                                mention_id,
+                                entity_id,
+                                chunk_id,
+                                mention.get('context', ''),
+                                mention.get('start', 0)
+                            )
+                        )
+
+                    # Store in Kuzu graph
+                    for chunk_idx, chunk_entities in enumerate(
+                        extract_entities_batch(
+                            chunks,
+                            entity_types=settings.entity_types_set,
+                            model_name=settings.spacy_model
+                        )
+                    ):
+                        if chunk_entities:
+                            chunk_id = chunk_id_map[chunk_idx]
+                            store_entities_in_graph(
+                                chunk_entities,
+                                chunk_id,
+                                chunks[chunk_idx]
+                            )
+
+                    print(f"✅ Stored entities in database and graph")
+                except Exception as e:
+                    print(f"⚠️  Entity storage failed: {e}")
+                    # Continue with ingestion
+
             await db.commit()
 
         # Batch upload to Qdrant (outside the database context)
@@ -124,13 +217,22 @@ async def upload_document(file: UploadFile = File(...)):
             points=chunk_points
         )
 
-        return {
+        # Prepare response
+        response = {
             "status": "success",
             "document_id": doc_id,
             "title": doc_metadata.title,
             "num_chunks": len(chunks),
             "message": f"Document processed successfully with {len(chunks)} chunks"
         }
+
+        # Add entity info if available
+        if all_entity_mentions and settings.entity_extraction_enabled:
+            entities_map = deduplicate_entities(all_entity_mentions)
+            response["num_entities"] = len(entities_map)
+            response["num_entity_mentions"] = len(all_entity_mentions)
+
+        return response
 
     finally:
         # Clean up temp file

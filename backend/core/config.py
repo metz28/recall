@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     anthropic_api_key: str | None = None
 
+    # Notion Configuration (optional)
+    notion_api_key: str | None = None
+
     # Chunking Configuration
     chunk_size: int = 512
     chunk_overlap: int = 50

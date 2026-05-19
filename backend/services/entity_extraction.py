@@ -1,16 +1,24 @@
 """
 Entity extraction service using spaCy
 """
-import spacy
-from functools import lru_cache
-from typing import List, Dict, Tuple
+
 import re
+from functools import lru_cache
+
+import spacy
 
 
 # Entity types to extract
 DEFAULT_ENTITY_TYPES = {
-    "PERSON", "ORG", "GPE", "PRODUCT", "EVENT",
-    "WORK_OF_ART", "LAW", "NORP", "FAC"
+    "PERSON",
+    "ORG",
+    "GPE",
+    "PRODUCT",
+    "EVENT",
+    "WORK_OF_ART",
+    "LAW",
+    "NORP",
+    "FAC",
 }
 
 
@@ -23,7 +31,9 @@ def get_spacy_model(model_name: str = "en_core_web_sm"):
         print(f"✅ spaCy model '{model_name}' loaded")
         return nlp
     except OSError:
-        print(f"⚠️  Model '{model_name}' not found. Run: python -m spacy download {model_name}")
+        print(
+            f"⚠️  Model '{model_name}' not found. Run: python -m spacy download {model_name}"
+        )
         raise
 
 
@@ -35,13 +45,15 @@ def normalize_entity_name(name: str) -> str:
     - Remove extra spaces
     """
     # Strip and normalize whitespace
-    normalized = re.sub(r'\s+', ' ', name.strip())
+    normalized = re.sub(r"\s+", " ", name.strip())
     # Convert to title case for consistency
     normalized = normalized.title()
     return normalized
 
 
-def get_entity_context(text: str, start_char: int, end_char: int, context_window: int = 100) -> str:
+def get_entity_context(
+    text: str, start_char: int, end_char: int, context_window: int = 100
+) -> str:
     """
     Extract surrounding context for an entity mention
 
@@ -63,13 +75,13 @@ def get_entity_context(text: str, start_char: int, end_char: int, context_window
     # Clean up context (remove leading/trailing partial words)
     if context_start > 0:
         # Find first space to avoid partial word
-        first_space = context.find(' ')
+        first_space = context.find(" ")
         if first_space != -1:
-            context = context[first_space + 1:]
+            context = context[first_space + 1 :]
 
     if context_end < len(text):
         # Find last space to avoid partial word
-        last_space = context.rfind(' ')
+        last_space = context.rfind(" ")
         if last_space != -1:
             context = context[:last_space]
 
@@ -80,8 +92,8 @@ def extract_entities_from_text(
     text: str,
     entity_types: set = None,
     model_name: str = "en_core_web_sm",
-    context_window: int = 100
-) -> List[Dict]:
+    context_window: int = 100,
+) -> list[dict]:
     """
     Extract entities from a single text
 
@@ -103,27 +115,31 @@ def extract_entities_from_text(
     entities = []
     for ent in doc.ents:
         if ent.label_ in entity_types:
-            context = get_entity_context(text, ent.start_char, ent.end_char, context_window)
+            context = get_entity_context(
+                text, ent.start_char, ent.end_char, context_window
+            )
 
-            entities.append({
-                "name": ent.text,
-                "normalized_name": normalize_entity_name(ent.text),
-                "type": ent.label_,
-                "start": ent.start_char,
-                "end": ent.end_char,
-                "context": context
-            })
+            entities.append(
+                {
+                    "name": ent.text,
+                    "normalized_name": normalize_entity_name(ent.text),
+                    "type": ent.label_,
+                    "start": ent.start_char,
+                    "end": ent.end_char,
+                    "context": context,
+                }
+            )
 
     return entities
 
 
 def extract_entities_batch(
-    texts: List[str],
+    texts: list[str],
     entity_types: set = None,
     model_name: str = "en_core_web_sm",
     context_window: int = 100,
-    batch_size: int = 50
-) -> List[List[Dict]]:
+    batch_size: int = 50,
+) -> list[list[dict]]:
     """
     Extract entities from multiple texts using batch processing
 
@@ -153,23 +169,27 @@ def extract_entities_batch(
         entities = []
         for ent in doc.ents:
             if ent.label_ in entity_types:
-                context = get_entity_context(text, ent.start_char, ent.end_char, context_window)
+                context = get_entity_context(
+                    text, ent.start_char, ent.end_char, context_window
+                )
 
-                entities.append({
-                    "name": ent.text,
-                    "normalized_name": normalize_entity_name(ent.text),
-                    "type": ent.label_,
-                    "start": ent.start_char,
-                    "end": ent.end_char,
-                    "context": context
-                })
+                entities.append(
+                    {
+                        "name": ent.text,
+                        "normalized_name": normalize_entity_name(ent.text),
+                        "type": ent.label_,
+                        "start": ent.start_char,
+                        "end": ent.end_char,
+                        "context": context,
+                    }
+                )
 
         all_entities.append(entities)
 
     return all_entities
 
 
-def deduplicate_entities(entity_mentions: List[Dict]) -> Dict[str, Dict]:
+def deduplicate_entities(entity_mentions: list[dict]) -> dict[str, dict]:
     """
     Deduplicate entities across mentions
 
@@ -190,7 +210,7 @@ def deduplicate_entities(entity_mentions: List[Dict]) -> Dict[str, Dict]:
                 "canonical_name": mention["name"],  # Use first occurrence as canonical
                 "type": mention["type"],
                 "mention_count": 0,
-                "variants": set()
+                "variants": set(),
             }
 
         # Update entity info

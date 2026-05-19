@@ -1,11 +1,11 @@
 """
 Text chunking service
 """
-from typing import List
+
 from core.config import settings
 
 
-def chunk_text(text: str, chunk_size: int = None, overlap: int = None) -> List[str]:
+def chunk_text(text: str, chunk_size: int = None, overlap: int = None) -> list[str]:
     """
     Split text into overlapping chunks
 
@@ -28,12 +28,12 @@ def chunk_text(text: str, chunk_size: int = None, overlap: int = None) -> List[s
         # Try to break at sentence boundary if we're not at the end
         if end < text_length:
             # Look for sentence endings
-            last_period = chunk.rfind('. ')
-            last_newline = chunk.rfind('\n')
+            last_period = chunk.rfind(". ")
+            last_newline = chunk.rfind("\n")
             last_break = max(last_period, last_newline)
 
             if last_break > chunk_size * 0.5:  # Only break if we're at least halfway
-                chunk = chunk[:last_break + 1]
+                chunk = chunk[: last_break + 1]
                 end = start + last_break + 1
 
         if chunk.strip():

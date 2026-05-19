@@ -1,10 +1,10 @@
 """
 Document loading service - handles PDF, DOCX, TXT, etc.
 """
+
 from pathlib import Path
 import fitz  # PyMuPDF
 from docx import Document
-from typing import Tuple
 
 
 def load_pdf(file_path: str) -> str:
@@ -25,11 +25,11 @@ def load_docx(file_path: str) -> str:
 
 def load_text(file_path: str) -> str:
     """Load plain text file"""
-    with open(file_path, 'r', encoding='utf-8') as f:
+    with open(file_path, "r", encoding="utf-8") as f:
         return f.read()
 
 
-def load_document(file_path: str) -> Tuple[str, str]:
+def load_document(file_path: str) -> tuple[str, str]:
     """
     Load document and return (content, file_type)
 
@@ -42,11 +42,11 @@ def load_document(file_path: str) -> Tuple[str, str]:
     path = Path(file_path)
     suffix = path.suffix.lower()
 
-    if suffix == '.pdf':
-        return load_pdf(file_path), 'pdf'
-    elif suffix == '.docx':
-        return load_docx(file_path), 'docx'
-    elif suffix in ['.txt', '.md']:
+    if suffix == ".pdf":
+        return load_pdf(file_path), "pdf"
+    elif suffix == ".docx":
+        return load_docx(file_path), "docx"
+    elif suffix in [".txt", ".md"]:
         return load_text(file_path), suffix[1:]
     else:
         raise ValueError(f"Unsupported file type: {suffix}")

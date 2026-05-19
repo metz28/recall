@@ -1,17 +1,18 @@
 """
 Notion API integration service
 """
-from typing import Optional
+
 from notion_client import Client
 from notion_client.errors import APIResponseError
 from tenacity import retry, stop_after_attempt, wait_exponential
-from backend.core.config import settings
+
+from core.config import settings
 
 
 class NotionService:
     """Service for interacting with Notion API"""
 
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, api_key: str | None = None):
         """
         Initialize Notion client
 
@@ -24,8 +25,7 @@ class NotionService:
         self.client = Client(auth=self.api_key)
 
     @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10)
+        stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10)
     )
     def get_page(self, page_id: str) -> dict:
         """
@@ -46,8 +46,7 @@ class NotionService:
             raise ValueError(f"Failed to retrieve Notion page: {e}")
 
     @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10)
+        stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10)
     )
     def get_block_children(self, block_id: str) -> list[dict]:
         """
@@ -66,8 +65,7 @@ class NotionService:
         try:
             while has_more:
                 response = self.client.blocks.children.list(
-                    block_id=block_id,
-                    start_cursor=start_cursor
+                    block_id=block_id, start_cursor=start_cursor
                 )
                 blocks.extend(response.get("results", []))
                 has_more = response.get("has_more", False)
@@ -160,7 +158,9 @@ class NotionService:
         # Fallback to page ID
         return f"Notion Page {page.get('id', 'Unknown')}"
 
-    def _extract_nested_blocks(self, block_id: str, depth: int = 0, max_depth: int = 10) -> str:
+    def _extract_nested_blocks(
+        self, block_id: str, depth: int = 0, max_depth: int = 10
+    ) -> str:
         """
         Recursively extract text from nested blocks
 
@@ -190,9 +190,7 @@ class NotionService:
 
             if block.get("has_children"):
                 nested_text = self._extract_nested_blocks(
-                    block["id"],
-                    depth + 1,
-                    max_depth
+                    block["id"], depth + 1, max_depth
                 )
                 if nested_text:
                     content_parts.append(nested_text)
@@ -200,8 +198,7 @@ class NotionService:
         return "\n".join(content_parts)
 
     @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10)
+        stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10)
     )
     def search_pages(self, query: str = "", page_size: int = 100) -> list[dict]:
         """
@@ -224,7 +221,7 @@ class NotionService:
                     query=query,
                     page_size=page_size,
                     start_cursor=start_cursor,
-                    filter={"property": "object", "value": "page"}
+                    filter={"property": "object", "value": "page"},
                 )
                 pages.extend(response.get("results", []))
                 has_more = response.get("has_more", False)
@@ -250,8 +247,7 @@ class NotionService:
             raise ValueError(f"Failed to retrieve Notion database: {e}")
 
     @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10)
+        stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10)
     )
     def query_database(self, database_id: str, page_size: int = 100) -> list[dict]:
         """
@@ -273,7 +269,7 @@ class NotionService:
                 response = self.client.databases.query(
                     database_id=database_id,
                     page_size=page_size,
-                    start_cursor=start_cursor
+                    start_cursor=start_cursor,
                 )
                 pages.extend(response.get("results", []))
                 has_more = response.get("has_more", False)
@@ -284,7 +280,7 @@ class NotionService:
         return pages
 
 
-def get_notion_service(api_key: Optional[str] = None) -> NotionService:
+def get_notion_service(api_key: str | None = None) -> NotionService:
     """
     Factory function to create NotionService instance
 

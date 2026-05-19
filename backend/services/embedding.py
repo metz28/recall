@@ -1,6 +1,7 @@
 """
 Embedding service using sentence-transformers
 """
+
 from sentence_transformers import SentenceTransformer
 from functools import lru_cache
 

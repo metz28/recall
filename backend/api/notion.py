@@ -8,11 +8,11 @@ from uuid import UUID
 import aiosqlite
 from datetime import datetime
 
-from backend.core.config import settings
-from backend.services.notion_service import get_notion_service
-from backend.services.chunking import chunk_text
-from backend.services.embedding import embed_texts
-from backend.models.document import DocumentMetadata
+from core.config import settings
+from services.notion_service import get_notion_service
+from services.chunking import chunk_text
+from services.embedding import embed_texts
+from models.document import DocumentMetadata
 from qdrant_client import QdrantClient
 
 

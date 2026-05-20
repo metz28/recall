@@ -58,18 +58,25 @@ async def init_sqlite():
             )
         """)
 
-        # Migrations: Add missing columns if they don't exist
-        try:
+        # Ensure all columns exist in entities table (migration support)
+        cursor = await db.execute("PRAGMA table_info(entities)")
+        existing_columns = {row[1] for row in await cursor.fetchall()}
+
+        if 'mention_count' not in existing_columns:
             await db.execute("ALTER TABLE entities ADD COLUMN mention_count INTEGER DEFAULT 1")
             print("✅ Added mention_count column to entities table")
-        except Exception:
-            pass  # Column already exists
 
-        try:
+        if 'variants' not in existing_columns:
             await db.execute("ALTER TABLE entities ADD COLUMN variants TEXT")
             print("✅ Added variants column to entities table")
-        except Exception:
-            pass  # Column already exists
+
+        if 'description' not in existing_columns:
+            await db.execute("ALTER TABLE entities ADD COLUMN description TEXT")
+            print("✅ Added description column to entities table")
+
+        if 'created_at' not in existing_columns:
+            await db.execute("ALTER TABLE entities ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+            print("✅ Added created_at column to entities table")
 
         # Entity mentions table (links entities to chunks)
         await db.execute("""

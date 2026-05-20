@@ -6,11 +6,13 @@ A personal knowledge base with hybrid vector + graph retrieval. Drop in PDFs, do
 
 - **Hybrid Retrieval**: Combines vector search (semantic similarity) with knowledge graph (entity relationships)
 - **Entity Extraction**: Automatically builds a knowledge graph of people, organizations, concepts, and their relationships
+- **Modern Web UI**: React TypeScript interface for document upload and semantic search
 - **Self-Contained**: Runs entirely in Docker with no external dependencies
 - **Production-Ready Architecture**: FastAPI backend, Qdrant for vectors, Kuzu for graphs, SQLite for metadata
 
 ## Tech Stack
 
+- **Frontend**: React 18 + TypeScript + Vite + Tailwind CSS
 - **Backend**: FastAPI + Python 3.11
 - **Vector Store**: Qdrant
 - **Graph Database**: Kuzu (embedded, no server needed)
@@ -57,12 +59,38 @@ Once running:
 - **Health Check:** http://localhost:8000/health
 - **Qdrant Dashboard:** http://localhost:6333/dashboard
 
+### Web UI (Optional)
+
+For a modern web interface, start the React frontend:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Then access the web UI at **http://localhost:3000**
+
+The web UI provides:
+- Drag-and-drop document upload
+- Semantic search with similarity scores
+- Document management and viewing
+
+See **[frontend/README.md](frontend/README.md)** for full frontend documentation.
+
 ## Development
 
 ### Project Structure
 
 ```
 recall/
+├── frontend/                # React TypeScript web UI
+│   ├── src/
+│   │   ├── components/      # React components
+│   │   ├── api/             # Backend API client
+│   │   └── types/           # TypeScript types
+│   ├── package.json
+│   └── vite.config.ts
 ├── backend/
 │   ├── main.py              # FastAPI app entry point
 │   ├── core/
@@ -122,7 +150,7 @@ curl "http://localhost:8000/api/ingest/documents"
 - [x] Vector storage in Qdrant
 - [x] Semantic search API
 - [x] Basic RAG chat endpoint
-- [ ] Simple web UI
+- [x] React TypeScript web UI with upload and search
 
 ### Phase 2: Knowledge Graph
 - [ ] Entity extraction (spaCy or LLM)

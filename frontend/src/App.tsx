@@ -1,0 +1,115 @@
+import { useState } from 'react';
+import Upload from './components/Upload';
+import Search from './components/Search';
+
+type View = 'upload' | 'search';
+
+function App() {
+  const [currentView, setCurrentView] = useState<View>('search');
+
+  return (
+    <div className="min-h-screen bg-gray-100">
+      {/* Header */}
+      <header className="bg-white shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center py-6">
+            <div className="flex items-center space-x-3">
+              <div className="bg-blue-600 rounded-lg p-2">
+                <svg
+                  className="h-8 w-8 text-white"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"
+                  />
+                </svg>
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">Recall</h1>
+                <p className="text-sm text-gray-500">Personal Knowledge Base</p>
+              </div>
+            </div>
+
+            <nav className="flex space-x-4">
+              <button
+                onClick={() => setCurrentView('search')}
+                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                  currentView === 'search'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                <div className="flex items-center space-x-2">
+                  <svg
+                    className="h-5 w-5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                    />
+                  </svg>
+                  <span>Search</span>
+                </div>
+              </button>
+
+              <button
+                onClick={() => setCurrentView('upload')}
+                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                  currentView === 'upload'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                <div className="flex items-center space-x-2">
+                  <svg
+                    className="h-5 w-5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                    />
+                  </svg>
+                  <span>Upload</span>
+                </div>
+              </button>
+            </nav>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="py-8">
+        {currentView === 'search' ? <Search /> : <Upload />}
+      </main>
+
+      {/* Footer */}
+      <footer className="bg-white border-t border-gray-200 mt-auto">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          <div className="flex justify-between items-center text-sm text-gray-500">
+            <p>Powered by vector embeddings and knowledge graphs</p>
+            <p>
+              Built with <span className="text-red-500">&hearts;</span> using React + FastAPI
+            </p>
+          </div>
+        </div>
+      </footer>
+    </div>
+  );
+}
+
+export default App;

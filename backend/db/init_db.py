@@ -133,19 +133,35 @@ async def init_kuzu():
     db = kuzu.Database(settings.kuzu_path)
     conn = kuzu.Connection(db)
 
-    # Create node tables
+    # Check if tables exist
     try:
-        conn.execute("CREATE NODE TABLE IF NOT EXISTS Entity(name STRING, type STRING, description STRING, PRIMARY KEY(name))")
-        conn.execute("CREATE NODE TABLE IF NOT EXISTS Chunk(id STRING, content STRING, PRIMARY KEY(id))")
+        result = conn.execute("SHOW TABLES")
+        existing_tables = {row[0] for row in result.get_as_df()['name'].tolist()}
+    except Exception:
+        existing_tables = set()
 
-        # Create relationship tables
-        conn.execute("CREATE REL TABLE IF NOT EXISTS MENTIONED_IN(FROM Entity TO Chunk, context STRING)")
-        conn.execute("CREATE REL TABLE IF NOT EXISTS RELATES_TO(FROM Entity TO Entity, type STRING, context STRING)")
+    # Create node tables if they don't exist
+    try:
+        if 'Entity' not in existing_tables:
+            conn.execute("CREATE NODE TABLE Entity(name STRING, type STRING, description STRING, PRIMARY KEY(name))")
+            print("✅ Created Kuzu Entity table")
+
+        if 'Chunk' not in existing_tables:
+            conn.execute("CREATE NODE TABLE Chunk(id STRING, content STRING, PRIMARY KEY(id))")
+            print("✅ Created Kuzu Chunk table")
+
+        # Create relationship tables if they don't exist
+        if 'MENTIONED_IN' not in existing_tables:
+            conn.execute("CREATE REL TABLE MENTIONED_IN(FROM Entity TO Chunk, context STRING)")
+            print("✅ Created Kuzu MENTIONED_IN relationship")
+
+        if 'RELATES_TO' not in existing_tables:
+            conn.execute("CREATE REL TABLE RELATES_TO(FROM Entity TO Entity, type STRING, context STRING)")
+            print("✅ Created Kuzu RELATES_TO relationship")
 
         print("✅ Kuzu graph initialized")
     except Exception as e:
-        # Tables might already exist
-        print(f"✅ Kuzu graph already initialized ({e})")
+        print(f"⚠️  Kuzu initialization error: {e}")
 
 
 async def init_databases():

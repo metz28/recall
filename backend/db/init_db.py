@@ -58,6 +58,19 @@ async def init_sqlite():
             )
         """)
 
+        # Migrations: Add missing columns if they don't exist
+        try:
+            await db.execute("ALTER TABLE entities ADD COLUMN mention_count INTEGER DEFAULT 1")
+            print("✅ Added mention_count column to entities table")
+        except Exception:
+            pass  # Column already exists
+
+        try:
+            await db.execute("ALTER TABLE entities ADD COLUMN variants TEXT")
+            print("✅ Added variants column to entities table")
+        except Exception:
+            pass  # Column already exists
+
         # Entity mentions table (links entities to chunks)
         await db.execute("""
             CREATE TABLE IF NOT EXISTS entity_mentions (

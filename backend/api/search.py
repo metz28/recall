@@ -43,8 +43,4 @@ async def search(
             "chunk_index": result.payload.get("chunk_index")
         })
 
-    return {
-        "query": query,
-        "results": formatted_results,
-        "count": len(formatted_results)
-    }
+    return formatted_results

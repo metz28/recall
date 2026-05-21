@@ -11,7 +11,11 @@ from core.config import settings
 from services.document_loader import load_document
 from services.chunking import chunk_text
 from services.embedding import embed_texts
-from services.entity_extraction import extract_entities_batch, deduplicate_entities
+from services.entity_extraction import (
+    extract_entities_batch,
+    deduplicate_entities,
+)
+from services.llm_entity_extraction import extract_entities_batch_llm
 from services.graph_service import store_entities_in_graph
 from models.document import DocumentMetadata, Chunk
 from qdrant_client import QdrantClient
@@ -73,17 +77,30 @@ async def upload_document(file: UploadFile = File(...)):
         all_entity_mentions = []
         if settings.entity_extraction_enabled:
             try:
-                print(f"🔍 Extracting entities from {len(chunks)} chunks...")
-                chunk_entities = extract_entities_batch(
-                    chunks,
-                    entity_types=settings.entity_types_set,
-                    model_name=settings.spacy_model,
-                    context_window=settings.entity_context_window
+                extraction_method = settings.entity_extraction_method.lower()
+                print(
+                    f"🔍 Extracting entities from {len(chunks)} chunks using {extraction_method}..."
                 )
+
+                if extraction_method == "llm":
+                    chunk_entities = extract_entities_batch_llm(
+                        chunks,
+                        entity_types=settings.entity_types_set,
+                        model_name=settings.llm_model,
+                        context_window=settings.entity_context_window,
+                    )
+                else:  # default to spacy
+                    chunk_entities = extract_entities_batch(
+                        chunks,
+                        entity_types=settings.entity_types_set,
+                        model_name=settings.spacy_model,
+                        context_window=settings.entity_context_window,
+                    )
+
                 # Flatten all mentions for deduplication
                 for chunk_idx, entities in enumerate(chunk_entities):
                     for entity in entities:
-                        entity['chunk_index'] = chunk_idx
+                        entity["chunk_index"] = chunk_idx
                         all_entity_mentions.append(entity)
                 print(f"✅ Extracted {len(all_entity_mentions)} entity mentions")
             except Exception as e:

@@ -33,10 +33,12 @@ class Settings(BaseSettings):
     chunk_overlap: int = 50
 
     # Entity Extraction Configuration
-    spacy_model: str = "en_core_web_sm"
     entity_extraction_enabled: bool = True
+    entity_extraction_method: str = "spacy"  # "spacy" or "llm"
+    spacy_model: str = "en_core_web_sm"
     entity_types: str = "PERSON,ORG,GPE,PRODUCT,EVENT,WORK_OF_ART,LAW,NORP,FAC"
     entity_context_window: int = 100
+    llm_model: str = "claude-3-haiku-20240307"  # Fast and cost-effective for extraction
 
     # Application Settings
     max_upload_size: int = 50  # MB

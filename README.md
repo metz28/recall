@@ -153,9 +153,9 @@ curl "http://localhost:8000/api/ingest/documents"
 - [x] React TypeScript web UI with upload and search
 
 ### Phase 2: Knowledge Graph
-- [ ] Entity extraction (spaCy or LLM)
+- [x] Entity extraction (spaCy or LLM)
+- [x] Kuzu graph integration
 - [ ] Relationship extraction
-- [ ] Kuzu graph integration
 - [ ] Hybrid retrieval (vector + graph)
 - [ ] Graph visualization
 
@@ -180,10 +180,28 @@ EMBEDDING_DIMENSION=384
 CHUNK_SIZE=512
 CHUNK_OVERLAP=50
 
-# Optional: LLM integration
-OPENAI_API_KEY=sk-...
+# Entity extraction
+ENTITY_EXTRACTION_ENABLED=true
+ENTITY_EXTRACTION_METHOD=spacy  # "spacy" or "llm"
+SPACY_MODEL=en_core_web_sm
+ENTITY_TYPES=PERSON,ORG,GPE,PRODUCT,EVENT,WORK_OF_ART,LAW,NORP,FAC
+
+# LLM integration (required for LLM-based entity extraction)
 ANTHROPIC_API_KEY=sk-ant-...
+LLM_MODEL=claude-3-haiku-20240307
 ```
+
+### Entity Extraction Methods
+
+**spaCy (default)**: Fast, free, local NER
+- Pros: No API costs, works offline, very fast
+- Cons: Less accurate on domain-specific entities
+
+**LLM (Claude)**: AI-powered extraction
+- Pros: Higher accuracy, better context understanding
+- Cons: Requires API key, costs per document, slower
+
+Set `ENTITY_EXTRACTION_METHOD=llm` and provide `ANTHROPIC_API_KEY` to use LLM extraction.
 
 ## Testing
 

@@ -25,11 +25,8 @@ markdownify==0.11.6
 sentence-transformers==2.3.1
 spacy==3.7.2
 
-# LLM integration (optional - uncomment what you need)
-# openai==1.10.0
-# anthropic==0.8.1
-# langchain==0.1.4
-# langchain-community==0.0.16
+# LLM integration
+anthropic==0.8.1
 
 # Notion integration
 notion-client==2.2.1

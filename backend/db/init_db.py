@@ -91,12 +91,32 @@ async def init_sqlite():
             )
         """)
 
+        # Relationships table (links entities to entities)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS relationships (
+                id TEXT PRIMARY KEY,
+                source_entity_id TEXT NOT NULL,
+                target_entity_id TEXT NOT NULL,
+                relationship_type TEXT NOT NULL,
+                context TEXT,
+                chunk_id TEXT,
+                confidence REAL DEFAULT 1.0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (source_entity_id) REFERENCES entities(id) ON DELETE CASCADE,
+                FOREIGN KEY (target_entity_id) REFERENCES entities(id) ON DELETE CASCADE,
+                FOREIGN KEY (chunk_id) REFERENCES chunks(id) ON DELETE CASCADE
+            )
+        """)
+
         # Create indices for performance
         await db.execute("CREATE INDEX IF NOT EXISTS idx_entity_mentions_entity ON entity_mentions(entity_id)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_entity_mentions_chunk ON entity_mentions(chunk_id)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_entities_name ON entities(name)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(entity_type)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_chunks_document ON chunks(document_id)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_relationships_source ON relationships(source_entity_id)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_relationships_target ON relationships(target_entity_id)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_relationships_type ON relationships(relationship_type)")
 
         await db.commit()
         print("✅ SQLite initialized")

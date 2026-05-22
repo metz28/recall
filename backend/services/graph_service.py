@@ -173,6 +173,80 @@ def get_entity_relationships(entity_name: str) -> list[dict]:
         return []
 
 
+def store_relationships_in_graph(relationships: list[dict]) -> None:
+    """
+    Store entity relationships in Kuzu graph
+
+    Args:
+        relationships: List of relationship dictionaries with keys:
+                      source_entity, target_entity, relationship_type, context
+    """
+    conn = get_kuzu_connection()
+
+    try:
+        for rel in relationships:
+            # Create RELATES_TO relationship between entities
+            conn.execute(
+                """
+                MATCH (e1:Entity {name: $source_entity})
+                MATCH (e2:Entity {name: $target_entity})
+                MERGE (e1)-[r:RELATES_TO]->(e2)
+                ON CREATE SET r.type = $rel_type, r.context = $context
+                """,
+                {
+                    "source_entity": rel["source_entity"],
+                    "target_entity": rel["target_entity"],
+                    "rel_type": rel["relationship_type"],
+                    "context": rel.get("context", "")[:200],
+                },
+            )
+
+    except Exception as e:
+        print(f"⚠️  Error storing relationships in graph: {e}")
+        # Don't raise - we want ingestion to continue even if graph storage fails
+
+
+def query_entity_relationships_graph(entity_name: str) -> list[dict]:
+    """
+    Query relationships for an entity from the graph
+
+    Args:
+        entity_name: Normalized name of the entity
+
+    Returns:
+        List of relationships with type and context
+    """
+    conn = get_kuzu_connection()
+
+    try:
+        # Get direct relationships
+        result = conn.execute(
+            """
+            MATCH (e1:Entity {name: $entity_name})-[r:RELATES_TO]->(e2:Entity)
+            RETURN e2.name, e2.type, r.type, r.context
+            """,
+            {"entity_name": entity_name},
+        )
+
+        relationships = []
+        while result.has_next():
+            row = result.get_next()
+            relationships.append(
+                {
+                    "target_entity": row[0],
+                    "target_type": row[1],
+                    "relationship_type": row[2],
+                    "context": row[3],
+                }
+            )
+
+        return relationships
+
+    except Exception as e:
+        print(f"⚠️  Error querying entity relationships from graph: {e}")
+        return []
+
+
 def delete_chunk_from_graph(chunk_id: str) -> None:
     """
     Delete a chunk and its relationships from the graph

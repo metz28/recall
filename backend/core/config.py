@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     entity_context_window: int = 100
     llm_model: str = "claude-3-haiku-20240307"  # Fast and cost-effective for extraction
 
+    # Relationship Extraction Configuration
+    relationship_extraction_enabled: bool = True
+    relationship_extraction_method: str = "llm"  # Currently only "llm" supported
+
     # Application Settings
     max_upload_size: int = 50  # MB
     allowed_extensions: str = ".txt,.pdf,.docx,.md,.html"

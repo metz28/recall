@@ -16,7 +16,11 @@ from services.entity_extraction import (
     deduplicate_entities,
 )
 from services.llm_entity_extraction import extract_entities_batch_llm
-from services.graph_service import store_entities_in_graph
+from services.relationship_extraction import (
+    extract_relationships_batch_llm,
+    normalize_relationship_type,
+)
+from services.graph_service import store_entities_in_graph, store_relationships_in_graph
 from models.document import DocumentMetadata, Chunk
 from qdrant_client import QdrantClient
 from qdrant_client.models import PointStruct
@@ -221,6 +225,81 @@ async def upload_document(file: UploadFile = File(...)):
                             )
 
                     print(f"✅ Stored entities in database and graph")
+
+                    # Extract and store relationships
+                    if settings.relationship_extraction_enabled and settings.relationship_extraction_method == "llm":
+                        try:
+                            print(f"🔗 Extracting relationships from {len(chunks)} chunks...")
+
+                            # Re-extract entities for relationship extraction
+                            if extraction_method == "llm":
+                                chunk_entities_for_rels = extract_entities_batch_llm(
+                                    chunks,
+                                    entity_types=settings.entity_types_set,
+                                    model_name=settings.llm_model,
+                                )
+                            else:
+                                chunk_entities_for_rels = extract_entities_batch(
+                                    chunks,
+                                    entity_types=settings.entity_types_set,
+                                    model_name=settings.spacy_model,
+                                )
+
+                            # Extract relationships
+                            chunk_relationships = extract_relationships_batch_llm(
+                                chunks,
+                                chunk_entities_for_rels,
+                                model_name=settings.llm_model,
+                            )
+
+                            # Flatten and store relationships
+                            all_relationships = []
+                            for chunk_idx, relationships in enumerate(chunk_relationships):
+                                for rel in relationships:
+                                    rel["chunk_index"] = chunk_idx
+                                    all_relationships.append(rel)
+
+                            print(f"✅ Extracted {len(all_relationships)} relationships")
+
+                            # Store relationships in SQLite
+                            for rel in all_relationships:
+                                # Find entity IDs by normalized name
+                                source_norm = rel["source_entity"]
+                                target_norm = rel["target_entity"]
+
+                                # Get entity IDs from the entity_id_map
+                                source_id = entity_id_map.get(source_norm)
+                                target_id = entity_id_map.get(target_norm)
+
+                                if source_id and target_id:
+                                    chunk_idx = rel["chunk_index"]
+                                    chunk_id = chunk_id_map[chunk_idx]
+                                    rel_id = str(uuid4())
+                                    rel_type = normalize_relationship_type(rel["relationship_type"])
+
+                                    await db.execute(
+                                        """INSERT INTO relationships
+                                           (id, source_entity_id, target_entity_id, relationship_type, context, chunk_id, confidence)
+                                           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                                        (
+                                            rel_id,
+                                            source_id,
+                                            target_id,
+                                            rel_type,
+                                            rel.get("context", ""),
+                                            chunk_id,
+                                            1.0,  # Default confidence
+                                        )
+                                    )
+
+                            # Store relationships in Kuzu graph
+                            store_relationships_in_graph(all_relationships)
+
+                            print(f"✅ Stored {len(all_relationships)} relationships in database and graph")
+                        except Exception as e:
+                            print(f"⚠️  Relationship extraction/storage failed: {e}")
+                            # Continue with ingestion
+
                 except Exception as e:
                     print(f"⚠️  Entity storage failed: {e}")
                     # Continue with ingestion
@@ -248,6 +327,16 @@ async def upload_document(file: UploadFile = File(...)):
             entities_map = deduplicate_entities(all_entity_mentions)
             response["num_entities"] = len(entities_map)
             response["num_entity_mentions"] = len(all_entity_mentions)
+
+            # Add relationship count if available
+            if settings.relationship_extraction_enabled:
+                async with aiosqlite.connect(settings.sqlite_path) as db:
+                    async with db.execute(
+                        "SELECT COUNT(*) FROM relationships WHERE chunk_id IN (SELECT id FROM chunks WHERE document_id = ?)",
+                        (doc_id,)
+                    ) as cursor:
+                        row = await cursor.fetchone()
+                        response["num_relationships"] = row[0] if row else 0
 
         return response
 

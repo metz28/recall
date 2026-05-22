@@ -213,3 +213,149 @@ async def get_entity_types_summary():
             return {
                 "types": [dict(row) for row in rows]
             }
+
+
+@router.get("/{entity_id}/relationships")
+async def get_entity_relationships(
+    entity_id: str,
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0)
+):
+    """
+    Get relationships for a specific entity
+
+    Args:
+        entity_id: ID of the entity
+        limit: Maximum number of relationships to return
+        offset: Number of relationships to skip
+
+    Returns:
+        List of relationships where this entity is the source or target
+    """
+    async with aiosqlite.connect(settings.sqlite_path) as db:
+        db.row_factory = aiosqlite.Row
+
+        # Verify entity exists
+        async with db.execute(
+            "SELECT name, entity_type FROM entities WHERE id = ?", (entity_id,)
+        ) as cursor:
+            entity_row = await cursor.fetchone()
+            if not entity_row:
+                raise HTTPException(status_code=404, detail="Entity not found")
+
+        # Get relationships where entity is source or target
+        async with db.execute(
+            """SELECT r.*,
+                      e1.name as source_name, e1.entity_type as source_type,
+                      e2.name as target_name, e2.entity_type as target_type
+               FROM relationships r
+               JOIN entities e1 ON r.source_entity_id = e1.id
+               JOIN entities e2 ON r.target_entity_id = e2.id
+               WHERE r.source_entity_id = ? OR r.target_entity_id = ?
+               ORDER BY r.created_at DESC
+               LIMIT ? OFFSET ?""",
+            (entity_id, entity_id, limit, offset)
+        ) as cursor:
+            relationships = [dict(row) for row in await cursor.fetchall()]
+
+        # Get total count
+        async with db.execute(
+            "SELECT COUNT(*) FROM relationships WHERE source_entity_id = ? OR target_entity_id = ?",
+            (entity_id, entity_id)
+        ) as cursor:
+            total = (await cursor.fetchone())[0]
+
+        return {
+            "entity": {
+                "id": entity_id,
+                "name": dict(entity_row)['name'],
+                "type": dict(entity_row)['entity_type']
+            },
+            "relationships": relationships,
+            "total": total,
+            "limit": limit,
+            "offset": offset
+        }
+
+
+@router.get("/relationships/all")
+async def list_all_relationships(
+    relationship_type: Optional[str] = Query(None, description="Filter by relationship type"),
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0)
+):
+    """
+    List all relationships with optional filters
+
+    Args:
+        relationship_type: Filter by relationship type (e.g., "works_for", "located_in")
+        limit: Maximum number of relationships to return
+        offset: Number of relationships to skip
+
+    Returns:
+        List of relationships with entity details
+    """
+    async with aiosqlite.connect(settings.sqlite_path) as db:
+        db.row_factory = aiosqlite.Row
+
+        # Build query
+        query = """SELECT r.*,
+                          e1.name as source_name, e1.entity_type as source_type,
+                          e2.name as target_name, e2.entity_type as target_type
+                   FROM relationships r
+                   JOIN entities e1 ON r.source_entity_id = e1.id
+                   JOIN entities e2 ON r.target_entity_id = e2.id
+                   WHERE 1=1"""
+        params = []
+
+        if relationship_type:
+            query += " AND r.relationship_type = ?"
+            params.append(relationship_type.lower())
+
+        query += " ORDER BY r.created_at DESC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
+
+        async with db.execute(query, params) as cursor:
+            relationships = [dict(row) for row in await cursor.fetchall()]
+
+        # Get total count
+        count_query = "SELECT COUNT(*) FROM relationships WHERE 1=1"
+        count_params = []
+
+        if relationship_type:
+            count_query += " AND relationship_type = ?"
+            count_params.append(relationship_type.lower())
+
+        async with db.execute(count_query, count_params) as cursor:
+            total = (await cursor.fetchone())[0]
+
+        return {
+            "relationships": relationships,
+            "total": total,
+            "limit": limit,
+            "offset": offset
+        }
+
+
+@router.get("/relationships/types/summary")
+async def get_relationship_types_summary():
+    """
+    Get summary of relationship types and their counts
+
+    Returns:
+        Dictionary of relationship types with counts
+    """
+    async with aiosqlite.connect(settings.sqlite_path) as db:
+        db.row_factory = aiosqlite.Row
+
+        async with db.execute(
+            """SELECT relationship_type, COUNT(*) as count
+               FROM relationships
+               GROUP BY relationship_type
+               ORDER BY count DESC"""
+        ) as cursor:
+            rows = await cursor.fetchall()
+
+            return {
+                "types": [dict(row) for row in rows]
+            }

@@ -124,9 +124,53 @@ curl -X POST "http://localhost:8000/api/ingest/upload" \
 
 ### Search
 
+#### Vector Search (Semantic Similarity)
+
 ```bash
 curl "http://localhost:8000/api/search?query=machine+learning&limit=5"
 ```
+
+#### Hybrid Search (Vector + Graph)
+
+Combines semantic similarity with knowledge graph context for enhanced retrieval:
+
+```bash
+# Basic hybrid search (default: 70% vector, 30% graph)
+curl "http://localhost:8000/api/search/hybrid?query=machine+learning&limit=10"
+
+# Adjust weighting (50% vector, 50% graph)
+curl "http://localhost:8000/api/search/hybrid?query=neural+networks&alpha=0.5"
+
+# Graph-focused search (30% vector, 70% graph)
+curl "http://localhost:8000/api/search/hybrid?query=Einstein&alpha=0.3"
+
+# Deeper graph traversal (2 hops)
+curl "http://localhost:8000/api/search/hybrid?query=quantum+computing&graph_depth=2"
+
+# Disable graph expansion (entity overlap only)
+curl "http://localhost:8000/api/search/hybrid?query=machine+learning&graph_depth=0"
+```
+
+**Hybrid Search Parameters:**
+- `alpha` (0.0-1.0): Weight for vector vs graph scores (default: 0.7)
+  - 1.0 = pure vector search
+  - 0.5 = equal weight
+  - 0.0 = pure graph search
+- `graph_depth` (0-3): Number of relationship hops to traverse (default: 1)
+- `graph_expansion_limit` (0-20): Max additional chunks from graph (default: 5)
+- `min_vector_score` (0.0-1.0): Threshold for vector results (default: 0.3)
+- `enable_entity_expansion` (bool): Enable graph traversal (default: true)
+
+**When to use hybrid search:**
+- Finding documents related to specific entities (people, organizations, concepts)
+- Discovering connections between topics
+- Exploring document clusters around related entities
+- When pure semantic search misses important context
+
+**When to use vector search:**
+- Pure semantic similarity queries
+- Speed is critical
+- No entities in your knowledge base yet
 
 ### Chat (RAG)
 
@@ -155,8 +199,8 @@ curl "http://localhost:8000/api/ingest/documents"
 ### Phase 2: Knowledge Graph
 - [x] Entity extraction (spaCy or LLM)
 - [x] Kuzu graph integration
-- [ ] Relationship extraction
-- [ ] Hybrid retrieval (vector + graph)
+- [x] Relationship extraction
+- [x] Hybrid retrieval (vector + graph)
 - [ ] Graph visualization
 
 ### Phase 3: Advanced Features
@@ -189,6 +233,15 @@ ENTITY_TYPES=PERSON,ORG,GPE,PRODUCT,EVENT,WORK_OF_ART,LAW,NORP,FAC
 # LLM integration (required for LLM-based entity extraction)
 ANTHROPIC_API_KEY=sk-ant-...
 LLM_MODEL=claude-3-haiku-20240307
+
+# Hybrid search (vector + graph)
+HYBRID_SEARCH_ENABLED=true
+HYBRID_SEARCH_DEFAULT_ALPHA=0.7
+HYBRID_SEARCH_DEFAULT_GRAPH_DEPTH=1
+HYBRID_SEARCH_MAX_GRAPH_DEPTH=3
+HYBRID_SEARCH_DEFAULT_EXPANSION_LIMIT=5
+HYBRID_SEARCH_MAX_EXPANSION_LIMIT=20
+HYBRID_SEARCH_MIN_VECTOR_SCORE=0.3
 ```
 
 ### Entity Extraction Methods

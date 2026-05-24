@@ -268,3 +268,125 @@ def delete_chunk_from_graph(chunk_id: str) -> None:
 
     except Exception as e:
         print(f"⚠️  Error deleting chunk from graph: {e}")
+
+
+def get_entities_by_chunk_id(chunk_id: str) -> list[str]:
+    """
+    Get entity names mentioned in a specific chunk from Kuzu graph
+
+    Args:
+        chunk_id: ID of the chunk
+
+    Returns:
+        List of entity names (normalized)
+    """
+    conn = get_kuzu_connection()
+
+    try:
+        result = conn.execute(
+            """
+            MATCH (e:Entity)-[:MENTIONED_IN]->(c:Chunk {id: $chunk_id})
+            RETURN e.name
+            """,
+            {"chunk_id": chunk_id},
+        )
+
+        entity_names = []
+        while result.has_next():
+            row = result.get_next()
+            entity_names.append(row[0])
+
+        return entity_names
+
+    except Exception as e:
+        print(f"⚠️  Error getting entities for chunk: {e}")
+        return []
+
+
+def get_related_entities_multi(entity_names: list[str], depth: int = 1) -> list[dict]:
+    """
+    Get entities related to multiple entities via RELATES_TO relationships
+
+    Args:
+        entity_names: List of entity names (normalized)
+        depth: Number of hops to traverse (1-3)
+
+    Returns:
+        List of related entity dictionaries with distance information
+    """
+    conn = get_kuzu_connection()
+    related_entities = []
+
+    try:
+        for entity_name in entity_names:
+            try:
+                result = conn.execute(
+                    f"""
+                    MATCH path = (e1:Entity {{name: $entity_name}})-[:RELATES_TO*1..{depth}]->(e2:Entity)
+                    WHERE e1.name <> e2.name
+                    RETURN DISTINCT e2.name, e2.type, length(path) as distance
+                    ORDER BY distance ASC
+                    LIMIT 10
+                    """,
+                    {"entity_name": entity_name},
+                )
+
+                while result.has_next():
+                    row = result.get_next()
+                    related_entities.append(
+                        {
+                            "source": entity_name,
+                            "related_entity": row[0],
+                            "type": row[1],
+                            "distance": row[2],
+                        }
+                    )
+
+            except Exception as e:
+                # Entity might not exist in graph
+                continue
+
+    except Exception as e:
+        print(f"⚠️  Error getting related entities: {e}")
+
+    return related_entities
+
+
+def get_chunks_by_entity_names(entity_names: list[str], limit: int = 10) -> list[dict]:
+    """
+    Get chunks that mention any of the given entities
+
+    Args:
+        entity_names: List of entity names (normalized)
+        limit: Maximum number of chunks to return
+
+    Returns:
+        List of chunk dictionaries with id and content
+    """
+    if not entity_names:
+        return []
+
+    conn = get_kuzu_connection()
+    chunks = []
+
+    try:
+        # Build a query to find chunks mentioning any of these entities
+        placeholders = ', '.join(f'"{name}"' for name in entity_names)
+
+        result = conn.execute(
+            f"""
+            MATCH (e:Entity)-[:MENTIONED_IN]->(c:Chunk)
+            WHERE e.name IN [{placeholders}]
+            RETURN DISTINCT c.id, c.content
+            LIMIT {limit}
+            """
+        )
+
+        while result.has_next():
+            row = result.get_next()
+            chunks.append({"id": row[0], "content": row[1]})
+
+    except Exception as e:
+        print(f"⚠️  Error getting chunks by entity names: {e}")
+
+    return chunks

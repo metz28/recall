@@ -44,6 +44,15 @@ class Settings(BaseSettings):
     relationship_extraction_enabled: bool = True
     relationship_extraction_method: str = "llm"  # Currently only "llm" supported
 
+    # Hybrid Search Configuration
+    hybrid_search_enabled: bool = True
+    hybrid_search_default_alpha: float = 0.7
+    hybrid_search_default_graph_depth: int = 1
+    hybrid_search_max_graph_depth: int = 3
+    hybrid_search_default_expansion_limit: int = 5
+    hybrid_search_max_expansion_limit: int = 20
+    hybrid_search_min_vector_score: float = 0.3
+
     # Application Settings
     max_upload_size: int = 50  # MB
     allowed_extensions: str = ".txt,.pdf,.docx,.md,.html"

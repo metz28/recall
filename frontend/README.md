@@ -84,7 +84,8 @@ The frontend communicates with the FastAPI backend through these endpoints:
 - `POST /api/ingest/upload` - Upload documents
 - `GET /api/ingest/documents` - List documents
 - `DELETE /api/ingest/documents/{id}` - Delete document
-- `GET /api/search` - Search documents
+- `GET /api/search` - Vector search (semantic similarity)
+- `GET /api/search/hybrid` - Hybrid search (vector + knowledge graph)
 
 ## Configuration
 

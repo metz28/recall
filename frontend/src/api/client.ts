@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { Document, SearchResult, UploadResponse } from '../types';
+import type { Document, SearchResult, UploadResponse, GraphData, EntityDetail } from '../types';
 
 const API_BASE_URL = '/api';
 
@@ -39,6 +39,26 @@ export const searchDocuments = async (
   const response = await api.get<SearchResult[]>('/search', {
     params: { query, limit },
   });
+  return response.data;
+};
+
+export const getGraphData = async (
+  limit?: number,
+  entityType?: string,
+  minMentions?: number
+): Promise<GraphData> => {
+  const response = await api.get<GraphData>('/graph/full', {
+    params: {
+      limit,
+      entity_type: entityType,
+      min_mentions: minMentions,
+    },
+  });
+  return response.data;
+};
+
+export const getEntityDetail = async (entityId: string): Promise<EntityDetail> => {
+  const response = await api.get<EntityDetail>(`/graph/entity/${entityId}`);
   return response.data;
 };
 

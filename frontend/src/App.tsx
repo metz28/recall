@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import Upload from './components/Upload';
 import Search from './components/Search';
+import Graph from './components/Graph';
 
-type View = 'upload' | 'search';
+type View = 'upload' | 'search' | 'graph';
 
 function App() {
   const [currentView, setCurrentView] = useState<View>('search');
@@ -63,6 +64,32 @@ function App() {
               </button>
 
               <button
+                onClick={() => setCurrentView('graph')}
+                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                  currentView === 'graph'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                <div className="flex items-center space-x-2">
+                  <svg
+                    className="h-5 w-5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"
+                    />
+                  </svg>
+                  <span>Graph</span>
+                </div>
+              </button>
+
+              <button
                 onClick={() => setCurrentView('upload')}
                 className={`px-4 py-2 rounded-lg font-medium transition-colors ${
                   currentView === 'upload'
@@ -94,7 +121,9 @@ function App() {
 
       {/* Main Content */}
       <main className="py-8">
-        {currentView === 'search' ? <Search /> : <Upload />}
+        {currentView === 'search' && <Search />}
+        {currentView === 'graph' && <Graph />}
+        {currentView === 'upload' && <Upload />}
       </main>
 
       {/* Footer */}

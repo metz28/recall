@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from core.config import settings
-from api import ingest, search, chat, entities, hybrid_search  # , notion
+from api import ingest, search, chat, entities, hybrid_search, graph  # , notion
 from db.init_db import init_databases
 
 
@@ -61,6 +61,7 @@ app.include_router(search.router, prefix="/api/search", tags=["search"])
 app.include_router(hybrid_search.router, prefix="/api/search/hybrid", tags=["search"])
 app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
 app.include_router(entities.router, prefix="/api/entities", tags=["entities"])
+app.include_router(graph.router, prefix="/api/graph", tags=["graph"])
 # app.include_router(notion.router, prefix="/api/notion", tags=["notion"])  # Disabled: missing notion-client dependency
 
 

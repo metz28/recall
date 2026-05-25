@@ -31,3 +31,63 @@ export interface UploadResponse {
 export interface ErrorResponse {
   detail: string;
 }
+
+export interface GraphNode {
+  id: string;
+  label: string;
+  type: string;
+  mention_count: number;
+  description?: string;
+  variants?: string;
+}
+
+export interface GraphEdge {
+  id: string;
+  source: string;
+  target: string;
+  type: string;
+  context?: string;
+  confidence?: number;
+}
+
+export interface GraphStats {
+  total_nodes: number;
+  total_edges: number;
+  entity_types: Record<string, number>;
+}
+
+export interface GraphData {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  stats: GraphStats;
+}
+
+export interface EntityRelationship {
+  id: string;
+  relationship_type: string;
+  direction: 'outgoing' | 'incoming';
+  other_entity: {
+    id: string;
+    name: string;
+    type: string;
+  };
+  context?: string;
+  confidence?: number;
+}
+
+export interface EntityMention {
+  context: string;
+  document_title: string;
+}
+
+export interface EntityDetail {
+  id: string;
+  name: string;
+  entity_type: string;
+  description?: string;
+  mention_count: number;
+  variants?: string;
+  created_at: string;
+  relationships: EntityRelationship[];
+  sample_mentions: EntityMention[];
+}

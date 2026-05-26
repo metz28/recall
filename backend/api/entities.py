@@ -52,7 +52,7 @@ async def list_entities(
                 if entity.get('variants'):
                     try:
                         entity['variants'] = json.loads(entity['variants'])
-                    except:
+                    except json.JSONDecodeError:
                         entity['variants'] = []
                 entities.append(entity)
 

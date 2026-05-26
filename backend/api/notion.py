@@ -9,11 +9,14 @@ import aiosqlite
 from datetime import datetime
 
 from core.config import settings
+from core.logging_config import get_logger
 from services.notion_service import get_notion_service
 from services.chunking import chunk_text
 from services.embedding import embed_texts
 from models.document import DocumentMetadata
 from qdrant_client import QdrantClient
+
+logger = get_logger(__name__)
 
 
 router = APIRouter()
@@ -74,7 +77,7 @@ async def import_notion_page(request: NotionPageRequest):
         notion = get_notion_service(api_key=request.api_key)
 
         # Extract page content
-        print(f"📥 Fetching Notion page: {request.page_id}")
+        logger.info(f"Fetching Notion page: {request.page_id}")
         title, content = notion.extract_page_content(request.page_id)
 
         if not content:
@@ -83,7 +86,7 @@ async def import_notion_page(request: NotionPageRequest):
                 detail="Page content is empty"
             )
 
-        print(f"✓ Retrieved page: {title} ({len(content)} characters)")
+        logger.info(f"Retrieved page: {title} ({len(content)} characters)")
 
         # Create document metadata
         doc_metadata = DocumentMetadata(
@@ -97,23 +100,23 @@ async def import_notion_page(request: NotionPageRequest):
         )
 
         # Chunk the content
-        print(f"✂️  Chunking content...")
+        logger.info(f"Chunking content...")
         chunks = chunk_text(
             content,
             chunk_size=settings.chunk_size,
             chunk_overlap=settings.chunk_overlap
         )
         doc_metadata.num_chunks = len(chunks)
-        print(f"✓ Created {len(chunks)} chunks")
+        logger.info(f"Created {len(chunks)} chunks")
 
         # Generate embeddings
-        print(f"🧮 Generating embeddings...")
+        logger.info(f"Generating embeddings...")
         chunk_texts = [c["text"] for c in chunks]
         embeddings = embed_texts(chunk_texts)
-        print(f"✓ Generated {len(embeddings)} embeddings")
+        logger.info(f"Generated {len(embeddings)} embeddings")
 
         # Store in SQLite
-        print(f"💾 Storing in database...")
+        logger.info(f"Storing in database...")
         async with aiosqlite.connect(settings.sqlite_path) as db:
             # Insert document
             await db.execute(
@@ -164,7 +167,7 @@ async def import_notion_page(request: NotionPageRequest):
             await db.commit()
 
         # Store embeddings in Qdrant
-        print(f"🔍 Storing vectors in Qdrant...")
+        logger.info(f"Storing vectors in Qdrant...")
         qdrant = QdrantClient(host=settings.qdrant_host, port=settings.qdrant_port)
 
         points = []
@@ -188,7 +191,7 @@ async def import_notion_page(request: NotionPageRequest):
             points=points
         )
 
-        print(f"✅ Successfully imported Notion page: {title}")
+        logger.info(f"Successfully imported Notion page: {title}")
 
         return NotionPageResponse(
             document_id=doc_metadata.id,
@@ -200,7 +203,7 @@ async def import_notion_page(request: NotionPageRequest):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        print(f"❌ Error importing Notion page: {e}")
+        logger.error(f"Error importing Notion page: {e}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
@@ -217,7 +220,7 @@ async def search_notion_workspace(request: NotionSearchRequest):
         notion = get_notion_service(api_key=request.api_key)
 
         # Search pages
-        print(f"🔎 Searching Notion workspace: '{request.query}'")
+        logger.info(f"Searching Notion workspace: '{request.query}'")
         pages = notion.search_pages(query=request.query, page_size=request.page_size)
 
         # Extract page info
@@ -232,7 +235,7 @@ async def search_notion_workspace(request: NotionSearchRequest):
             )
             page_infos.append(page_info)
 
-        print(f"✓ Found {len(page_infos)} pages")
+        logger.info(f"Found {len(page_infos)} pages")
 
         return NotionSearchResponse(
             pages=page_infos,
@@ -242,7 +245,7 @@ async def search_notion_workspace(request: NotionSearchRequest):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        print(f"❌ Error searching Notion: {e}")
+        logger.error(f"Error searching Notion: {e}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 

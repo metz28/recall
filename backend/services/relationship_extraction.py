@@ -9,6 +9,9 @@ from typing import Optional
 import anthropic
 
 from core.config import settings
+from core.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 def extract_relationships_from_entities_llm(
@@ -85,7 +88,7 @@ Return an empty array [] if no relationships are found."""
         relationships_data = json.loads(response_text)
 
         if not isinstance(relationships_data, list):
-            print(f"⚠️  LLM returned non-list response: {response_text[:100]}")
+            logger.warning(f"LLM returned non-list response: {response_text[:100]}")
             return []
 
         # Validate and normalize relationships
@@ -125,11 +128,11 @@ Return an empty array [] if no relationships are found."""
         return relationships
 
     except json.JSONDecodeError as e:
-        print(f"⚠️  Failed to parse LLM response as JSON: {e}")
-        print(f"Response was: {response_text[:200]}")
+        logger.error(f"Failed to parse LLM response as JSON: {e}")
+        logger.error(f"Response was: {response_text[:200]}")
         return []
     except Exception as e:
-        print(f"⚠️  LLM relationship extraction failed: {e}")
+        logger.error(f"LLM relationship extraction failed: {e}")
         return []
 
 

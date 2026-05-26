@@ -7,6 +7,9 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams
 
 from core.config import settings
+from core.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 async def init_sqlite():
@@ -64,19 +67,19 @@ async def init_sqlite():
 
         if 'mention_count' not in existing_columns:
             await db.execute("ALTER TABLE entities ADD COLUMN mention_count INTEGER DEFAULT 1")
-            print("✅ Added mention_count column to entities table")
+            logger.info("Added mention_count column to entities table")
 
         if 'variants' not in existing_columns:
             await db.execute("ALTER TABLE entities ADD COLUMN variants TEXT")
-            print("✅ Added variants column to entities table")
+            logger.info("Added variants column to entities table")
 
         if 'description' not in existing_columns:
             await db.execute("ALTER TABLE entities ADD COLUMN description TEXT")
-            print("✅ Added description column to entities table")
+            logger.info("Added description column to entities table")
 
         if 'created_at' not in existing_columns:
             await db.execute("ALTER TABLE entities ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
-            print("✅ Added created_at column to entities table")
+            logger.info("Added created_at column to entities table")
 
         # Entity mentions table (links entities to chunks)
         await db.execute("""
@@ -119,7 +122,7 @@ async def init_sqlite():
         await db.execute("CREATE INDEX IF NOT EXISTS idx_relationships_type ON relationships(relationship_type)")
 
         await db.commit()
-        print("✅ SQLite initialized")
+        logger.info("SQLite initialized")
 
 
 async def init_qdrant():
@@ -138,9 +141,9 @@ async def init_qdrant():
                 distance=Distance.COSINE
             )
         )
-        print(f"✅ Qdrant collection '{collection_name}' created")
+        logger.info(f"Qdrant collection '{collection_name}' created")
     else:
-        print(f"✅ Qdrant collection '{collection_name}' already exists")
+        logger.info(f"Qdrant collection '{collection_name}' already exists")
 
 
 async def init_kuzu():
@@ -164,24 +167,24 @@ async def init_kuzu():
     try:
         if 'Entity' not in existing_tables:
             conn.execute("CREATE NODE TABLE Entity(name STRING, type STRING, description STRING, PRIMARY KEY(name))")
-            print("✅ Created Kuzu Entity table")
+            logger.info("Created Kuzu Entity table")
 
         if 'Chunk' not in existing_tables:
             conn.execute("CREATE NODE TABLE Chunk(id STRING, content STRING, PRIMARY KEY(id))")
-            print("✅ Created Kuzu Chunk table")
+            logger.info("Created Kuzu Chunk table")
 
         # Create relationship tables if they don't exist
         if 'MENTIONED_IN' not in existing_tables:
             conn.execute("CREATE REL TABLE MENTIONED_IN(FROM Entity TO Chunk, context STRING)")
-            print("✅ Created Kuzu MENTIONED_IN relationship")
+            logger.info("Created Kuzu MENTIONED_IN relationship")
 
         if 'RELATES_TO' not in existing_tables:
             conn.execute("CREATE REL TABLE RELATES_TO(FROM Entity TO Entity, type STRING, context STRING)")
-            print("✅ Created Kuzu RELATES_TO relationship")
+            logger.info("Created Kuzu RELATES_TO relationship")
 
-        print("✅ Kuzu graph initialized")
+        logger.info("Kuzu graph initialized")
     except Exception as e:
-        print(f"⚠️  Kuzu initialization error: {e}")
+        logger.warning(f"Kuzu initialization error: {e}")
 
 
 async def init_databases():

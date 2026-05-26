@@ -7,36 +7,41 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from core.config import settings
-from api import ingest, search, chat, entities, hybrid_search, graph  # , notion
+from core.logging_config import setup_logging, get_logger
+from api import ingest, search, chat, entities, hybrid_search, graph
 from db.init_db import init_databases
+
+# Initialize logging
+setup_logging()
+logger = get_logger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize databases on startup"""
-    print("🚀 Starting Recall...")
+    logger.info("Starting Recall...")
     await init_databases()
-    print("✅ Databases initialized")
+    logger.info("Databases initialized")
 
     # Preload embedding model (takes 30-60 seconds on first run)
-    print("📦 Loading embedding model (this may take a minute)...")
+    logger.info("Loading embedding model (this may take a minute)...")
     from services.embedding import get_embedding_model
     get_embedding_model()
-    print("✅ Embedding model loaded")
+    logger.info("Embedding model loaded")
 
     # Preload spaCy model for entity extraction
     if settings.entity_extraction_enabled:
-        print("📦 Loading spaCy model for entity extraction...")
+        logger.info("Loading spaCy model for entity extraction...")
         from services.entity_extraction import get_spacy_model
         try:
             get_spacy_model(settings.spacy_model)
-            print("✅ spaCy model loaded")
+            logger.info("spaCy model loaded")
         except Exception as e:
-            print(f"⚠️  Could not load spaCy model: {e}")
-            print("⚠️  Entity extraction will be disabled")
+            logger.warning(f"Could not load spaCy model: {e}")
+            logger.warning("Entity extraction will be disabled")
 
     yield
-    print("👋 Shutting down Recall...")
+    logger.info("Shutting down Recall...")
 
 
 app = FastAPI(
@@ -62,7 +67,6 @@ app.include_router(hybrid_search.router, prefix="/api/search/hybrid", tags=["sea
 app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
 app.include_router(entities.router, prefix="/api/entities", tags=["entities"])
 app.include_router(graph.router, prefix="/api/graph", tags=["graph"])
-# app.include_router(notion.router, prefix="/api/notion", tags=["notion"])  # Disabled: missing notion-client dependency
 
 
 @app.get("/")

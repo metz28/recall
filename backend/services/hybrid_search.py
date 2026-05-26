@@ -5,6 +5,7 @@ from typing import Optional
 from qdrant_client import QdrantClient
 
 from core.config import settings
+from core.logging_config import get_logger
 from services.embedding import embed_text
 from services.entity_extraction import extract_entities_from_text
 from services.graph_retrieval import (
@@ -13,6 +14,8 @@ from services.graph_retrieval import (
     get_related_entities,
     calculate_entity_overlap
 )
+
+logger = get_logger(__name__)
 
 
 async def hybrid_search(
@@ -50,7 +53,7 @@ async def hybrid_search(
             )
             query_entities = [e["normalized_name"] for e in extracted]
         except Exception as e:
-            print(f"⚠️  Entity extraction from query failed: {e}")
+            logger.warning(f"Entity extraction from query failed: {e}")
 
     # Step 2: Perform vector search (get more candidates for filtering)
     query_embedding = embed_text(query)
@@ -75,7 +78,7 @@ async def hybrid_search(
         try:
             chunk_entities = await get_chunk_entities(chunk_id)
         except Exception as e:
-            print(f"⚠️  Failed to get chunk entities: {e}")
+            logger.warning(f"Failed to get chunk entities: {e}")
             chunk_entities = []
 
         # Calculate graph score based on entity overlap
@@ -162,7 +165,7 @@ async def hybrid_search(
                 })
 
         except Exception as e:
-            print(f"⚠️  Entity expansion failed: {e}")
+            logger.warning(f"Entity expansion failed: {e}")
 
     # Step 5: Deduplicate and rank
     final_results = deduplicate_and_rank(enriched_results, limit)

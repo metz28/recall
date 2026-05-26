@@ -8,6 +8,9 @@ from pathlib import Path
 import kuzu
 
 from core.config import settings
+from core.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 @lru_cache(maxsize=1)
@@ -19,7 +22,7 @@ def get_kuzu_connection():
     db = kuzu.Database(settings.kuzu_path)
     conn = kuzu.Connection(db)
 
-    print("✅ Kuzu connection established")
+    logger.info("Kuzu connection established")
     return conn
 
 
@@ -77,7 +80,7 @@ def store_entities_in_graph(
             )
 
     except Exception as e:
-        print(f"⚠️  Error storing entities in graph: {e}")
+        logger.error(f"Error storing entities in graph: {e}")
         # Don't raise - we want ingestion to continue even if graph storage fails
 
 
@@ -124,7 +127,7 @@ def query_entity_graph(entity_name: str, depth: int = 1) -> dict:
         return entity_info
 
     except Exception as e:
-        print(f"⚠️  Error querying entity graph: {e}")
+        logger.error(f"Error querying entity graph: {e}")
         return {
             "name": entity_name,
             "type": None,
@@ -169,7 +172,7 @@ def get_entity_relationships(entity_name: str) -> list[dict]:
         return related_entities
 
     except Exception as e:
-        print(f"⚠️  Error querying entity relationships: {e}")
+        logger.error(f"Error querying entity relationships: {e}")
         return []
 
 
@@ -202,7 +205,7 @@ def store_relationships_in_graph(relationships: list[dict]) -> None:
             )
 
     except Exception as e:
-        print(f"⚠️  Error storing relationships in graph: {e}")
+        logger.error(f"Error storing relationships in graph: {e}")
         # Don't raise - we want ingestion to continue even if graph storage fails
 
 
@@ -243,7 +246,7 @@ def query_entity_relationships_graph(entity_name: str) -> list[dict]:
         return relationships
 
     except Exception as e:
-        print(f"⚠️  Error querying entity relationships from graph: {e}")
+        logger.error(f"Error querying entity relationships from graph: {e}")
         return []
 
 
@@ -267,7 +270,7 @@ def delete_chunk_from_graph(chunk_id: str) -> None:
         )
 
     except Exception as e:
-        print(f"⚠️  Error deleting chunk from graph: {e}")
+        logger.error(f"Error deleting chunk from graph: {e}")
 
 
 def get_entities_by_chunk_id(chunk_id: str) -> list[str]:
@@ -299,7 +302,7 @@ def get_entities_by_chunk_id(chunk_id: str) -> list[str]:
         return entity_names
 
     except Exception as e:
-        print(f"⚠️  Error getting entities for chunk: {e}")
+        logger.error(f"Error getting entities for chunk: {e}")
         return []
 
 
@@ -347,7 +350,7 @@ def get_related_entities_multi(entity_names: list[str], depth: int = 1) -> list[
                 continue
 
     except Exception as e:
-        print(f"⚠️  Error getting related entities: {e}")
+        logger.error(f"Error getting related entities: {e}")
 
     return related_entities
 
@@ -387,6 +390,6 @@ def get_chunks_by_entity_names(entity_names: list[str], limit: int = 10) -> list
             chunks.append({"id": row[0], "content": row[1]})
 
     except Exception as e:
-        print(f"⚠️  Error getting chunks by entity names: {e}")
+        logger.error(f"Error getting chunks by entity names: {e}")
 
     return chunks

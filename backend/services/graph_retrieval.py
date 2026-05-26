@@ -6,7 +6,10 @@ import aiosqlite
 from typing import Optional
 
 from core.config import settings
+from core.logging_config import get_logger
 from services.graph_service import get_kuzu_connection
+
+logger = get_logger(__name__)
 
 
 async def get_chunk_entities(chunk_id: str) -> list[str]:
@@ -138,11 +141,11 @@ async def get_related_entities(
                     })
             except Exception as e:
                 # Entity might not exist in graph or have no relationships
-                print(f"⚠️  Could not find related entities for {entity_name}: {e}")
+                logger.warning(f"Could not find related entities for {entity_name}: {e}")
                 continue
 
     except Exception as e:
-        print(f"⚠️  Error in get_related_entities: {e}")
+        logger.error(f"Error in get_related_entities: {e}")
 
     return related_entities
 

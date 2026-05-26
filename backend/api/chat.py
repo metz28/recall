@@ -4,9 +4,13 @@ Chat API endpoints (RAG)
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from qdrant_client import QdrantClient
+import anthropic
 
 from core.config import settings
+from core.logging_config import get_logger
 from services.embedding import embed_text
+
+logger = get_logger(__name__)
 
 router = APIRouter()
 
@@ -71,12 +75,80 @@ async def chat(request: ChatRequest):
 @router.post("/generate")
 async def chat_with_llm(request: ChatRequest):
     """
-    Chat with LLM integration (Phase 2)
+    Chat with LLM integration using Claude
 
-    Requires OPENAI_API_KEY or ANTHROPIC_API_KEY in .env
+    Requires ANTHROPIC_API_KEY in .env
     """
-    # TODO: Implement LLM integration
-    raise HTTPException(
-        status_code=501,
-        detail="LLM integration not yet implemented. Use the basic /chat endpoint for MVP."
-    )
+    if not settings.anthropic_api_key:
+        raise HTTPException(
+            status_code=503,
+            detail="ANTHROPIC_API_KEY not configured. Please set it in .env file."
+        )
+
+    try:
+        # Generate query embedding
+        query_embedding = embed_text(request.message)
+
+        # Search for relevant chunks
+        qdrant = QdrantClient(host=settings.qdrant_host, port=settings.qdrant_port)
+        results = qdrant.search(
+            collection_name="recall_chunks",
+            query_vector=query_embedding,
+            limit=request.num_context_chunks
+        )
+
+        # Format sources and build context
+        sources = []
+        context_texts = []
+        for result in results:
+            source = {
+                "chunk_id": result.id,
+                "score": result.score,
+                "content": result.payload.get("content"),
+                "document_title": result.payload.get("document_title")
+            }
+            sources.append(source)
+            context_texts.append(f"From '{source['document_title']}':\n{source['content']}")
+
+        # Build prompt with context
+        if not context_texts:
+            context_section = "No relevant information found in the knowledge base."
+        else:
+            context_section = "\n\n---\n\n".join(context_texts)
+
+        prompt = f"""You are a helpful AI assistant that answers questions based on the user's personal knowledge base.
+
+Use the following context from the knowledge base to answer the user's question. If the context doesn't contain relevant information to answer the question, say so clearly.
+
+Context from knowledge base:
+
+{context_section}
+
+---
+
+User question: {request.message}
+
+Please provide a helpful, accurate answer based on the context above. If you reference specific information, mention which document it came from."""
+
+        # Call Claude API
+        client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+
+        message = client.messages.create(
+            model=settings.llm_model,
+            max_tokens=2048,
+            messages=[{"role": "user", "content": prompt}]
+        )
+
+        response_text = message.content[0].text
+
+        return ChatResponse(
+            response=response_text,
+            sources=sources
+        )
+
+    except Exception as e:
+        logger.error(f"LLM chat generation failed: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate response: {str(e)}"
+        )

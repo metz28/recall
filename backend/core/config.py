@@ -53,6 +53,9 @@ class Settings(BaseSettings):
     hybrid_search_max_expansion_limit: int = 20
     hybrid_search_min_vector_score: float = 0.3
 
+    # Logging Configuration
+    log_level: str = "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+
     # Application Settings
     max_upload_size: int = 50  # MB
     allowed_extensions: str = ".txt,.pdf,.docx,.md,.html"

@@ -6,12 +6,15 @@ from sentence_transformers import SentenceTransformer
 from functools import lru_cache
 
 from core.config import settings
+from core.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 @lru_cache(maxsize=1)
 def get_embedding_model() -> SentenceTransformer:
     """Load and cache the embedding model"""
-    print(f"Loading embedding model: {settings.embedding_model}")
+    logger.info(f"Loading embedding model: {settings.embedding_model}")
     return SentenceTransformer(settings.embedding_model)
 
 

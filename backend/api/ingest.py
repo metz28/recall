@@ -8,6 +8,7 @@ from uuid import uuid4
 from datetime import datetime
 
 from core.config import settings
+from core.logging_config import get_logger
 from services.document_loader import load_document
 from services.chunking import chunk_text
 from services.embedding import embed_texts
@@ -25,6 +26,8 @@ from models.document import DocumentMetadata, Chunk
 from qdrant_client import QdrantClient
 from qdrant_client.models import PointStruct
 import json
+
+logger = get_logger(__name__)
 
 router = APIRouter()
 
@@ -82,8 +85,8 @@ async def upload_document(file: UploadFile = File(...)):
         if settings.entity_extraction_enabled:
             try:
                 extraction_method = settings.entity_extraction_method.lower()
-                print(
-                    f"🔍 Extracting entities from {len(chunks)} chunks using {extraction_method}..."
+                logger.info(
+                    f"Extracting entities from {len(chunks)} chunks using {extraction_method}..."
                 )
 
                 if extraction_method == "llm":
@@ -106,9 +109,9 @@ async def upload_document(file: UploadFile = File(...)):
                     for entity in entities:
                         entity["chunk_index"] = chunk_idx
                         all_entity_mentions.append(entity)
-                print(f"✅ Extracted {len(all_entity_mentions)} entity mentions")
+                logger.info(f"Extracted {len(all_entity_mentions)} entity mentions")
             except Exception as e:
-                print(f"⚠️  Entity extraction failed: {e}")
+                logger.error(f"Entity extraction failed: {e}")
                 # Continue with ingestion even if entity extraction fails
 
         # Generate embeddings
@@ -167,7 +170,7 @@ async def upload_document(file: UploadFile = File(...)):
                 try:
                     # Deduplicate entities
                     entities_map = deduplicate_entities(all_entity_mentions)
-                    print(f"📊 Found {len(entities_map)} unique entities")
+                    logger.info(f"Found {len(entities_map)} unique entities")
 
                     # Store unique entities
                     entity_id_map = {}  # Map normalized_name -> entity_id
@@ -224,12 +227,12 @@ async def upload_document(file: UploadFile = File(...)):
                                 chunks[chunk_idx]
                             )
 
-                    print(f"✅ Stored entities in database and graph")
+                    logger.info(f"Stored entities in database and graph")
 
                     # Extract and store relationships
                     if settings.relationship_extraction_enabled and settings.relationship_extraction_method == "llm":
                         try:
-                            print(f"🔗 Extracting relationships from {len(chunks)} chunks...")
+                            logger.info(f"Extracting relationships from {len(chunks)} chunks...")
 
                             # Re-extract entities for relationship extraction
                             if extraction_method == "llm":
@@ -259,7 +262,7 @@ async def upload_document(file: UploadFile = File(...)):
                                     rel["chunk_index"] = chunk_idx
                                     all_relationships.append(rel)
 
-                            print(f"✅ Extracted {len(all_relationships)} relationships")
+                            logger.info(f"Extracted {len(all_relationships)} relationships")
 
                             # Store relationships in SQLite
                             for rel in all_relationships:
@@ -295,13 +298,13 @@ async def upload_document(file: UploadFile = File(...)):
                             # Store relationships in Kuzu graph
                             store_relationships_in_graph(all_relationships)
 
-                            print(f"✅ Stored {len(all_relationships)} relationships in database and graph")
+                            logger.info(f"Stored {len(all_relationships)} relationships in database and graph")
                         except Exception as e:
-                            print(f"⚠️  Relationship extraction/storage failed: {e}")
+                            logger.error(f"Relationship extraction/storage failed: {e}")
                             # Continue with ingestion
 
                 except Exception as e:
-                    print(f"⚠️  Entity storage failed: {e}")
+                    logger.error(f"Entity storage failed: {e}")
                     # Continue with ingestion
 
             await db.commit()

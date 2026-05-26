@@ -66,7 +66,6 @@ function Graph() {
         const data = await getGraphData(100);
         setGraphData(data);
       } catch (err) {
-        console.error('Error loading graph data:', err);
         setError('Failed to load graph data. Please try again.');
       } finally {
         setLoading(false);
@@ -193,7 +192,7 @@ function Graph() {
       const entityData = await getEntityDetail(node.id);
       setSelectedEntity(entityData);
     } catch (err) {
-      console.error('Error loading entity details:', err);
+      // Entity details loading failed silently
     } finally {
       setLoadingEntity(false);
     }

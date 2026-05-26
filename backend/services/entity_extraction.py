@@ -2,10 +2,14 @@
 Entity extraction service using spaCy
 """
 
-import re
 from functools import lru_cache
 
 import spacy
+
+from core.logging_config import get_logger
+from .entity_utils import normalize_entity_name, get_entity_context
+
+logger = get_logger(__name__)
 
 
 # Entity types to extract
@@ -25,67 +29,16 @@ DEFAULT_ENTITY_TYPES = {
 @lru_cache(maxsize=1)
 def get_spacy_model(model_name: str = "en_core_web_sm"):
     """Load and cache the spaCy model"""
-    print(f"Loading spaCy model: {model_name}")
+    logger.info(f"Loading spaCy model: {model_name}")
     try:
         nlp = spacy.load(model_name)
-        print(f"✅ spaCy model '{model_name}' loaded")
+        logger.info(f"spaCy model '{model_name}' loaded")
         return nlp
     except OSError:
-        print(
-            f"⚠️  Model '{model_name}' not found. Run: python -m spacy download {model_name}"
+        logger.error(
+            f"Model '{model_name}' not found. Run: python -m spacy download {model_name}"
         )
         raise
-
-
-def normalize_entity_name(name: str) -> str:
-    """
-    Normalize entity name for deduplication
-    - Strip whitespace
-    - Convert to title case for consistency
-    - Remove extra spaces
-    """
-    # Strip and normalize whitespace
-    normalized = re.sub(r"\s+", " ", name.strip())
-    # Convert to title case for consistency
-    normalized = normalized.title()
-    return normalized
-
-
-def get_entity_context(
-    text: str, start_char: int, end_char: int, context_window: int = 100
-) -> str:
-    """
-    Extract surrounding context for an entity mention
-
-    Args:
-        text: Full text content
-        start_char: Start character position of entity
-        end_char: End character position of entity
-        context_window: Number of characters to include on each side
-
-    Returns:
-        Context string with entity surrounded by context
-    """
-    # Get surrounding context
-    context_start = max(0, start_char - context_window)
-    context_end = min(len(text), end_char + context_window)
-
-    context = text[context_start:context_end]
-
-    # Clean up context (remove leading/trailing partial words)
-    if context_start > 0:
-        # Find first space to avoid partial word
-        first_space = context.find(" ")
-        if first_space != -1:
-            context = context[first_space + 1 :]
-
-    if context_end < len(text):
-        # Find last space to avoid partial word
-        last_space = context.rfind(" ")
-        if last_space != -1:
-            context = context[:last_space]
-
-    return context.strip()
 
 
 def extract_entities_from_text(
@@ -116,7 +69,7 @@ def extract_entities_from_text(
     for ent in doc.ents:
         if ent.label_ in entity_types:
             context = get_entity_context(
-                text, ent.start_char, ent.end_char, context_window
+                text, start_char=ent.start_char, end_char=ent.end_char, context_window=context_window
             )
 
             entities.append(

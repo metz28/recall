@@ -9,62 +9,10 @@ from typing import Optional
 import anthropic
 
 from core.config import settings
+from core.logging_config import get_logger
+from .entity_utils import normalize_entity_name, get_entity_context
 
-
-def normalize_entity_name(name: str) -> str:
-    """
-    Normalize entity name for deduplication
-    - Strip whitespace
-    - Convert to title case for consistency
-    - Remove extra spaces
-    """
-    normalized = re.sub(r"\s+", " ", name.strip())
-    normalized = normalized.title()
-    return normalized
-
-
-def get_entity_context(
-    text: str, entity_name: str, context_window: int = 100
-) -> str:
-    """
-    Extract surrounding context for an entity mention
-
-    Args:
-        text: Full text content
-        entity_name: Name of the entity to find
-        context_window: Number of characters to include on each side
-
-    Returns:
-        Context string with entity surrounded by context
-    """
-    # Find entity position in text (case-insensitive)
-    pattern = re.compile(re.escape(entity_name), re.IGNORECASE)
-    match = pattern.search(text)
-
-    if not match:
-        return text[:200] if len(text) > 200 else text
-
-    start_char = match.start()
-    end_char = match.end()
-
-    # Get surrounding context
-    context_start = max(0, start_char - context_window)
-    context_end = min(len(text), end_char + context_window)
-
-    context = text[context_start:context_end]
-
-    # Clean up context (remove leading/trailing partial words)
-    if context_start > 0:
-        first_space = context.find(" ")
-        if first_space != -1:
-            context = context[first_space + 1 :]
-
-    if context_end < len(text):
-        last_space = context.rfind(" ")
-        if last_space != -1:
-            context = context[:last_space]
-
-    return context.strip()
+logger = get_logger(__name__)
 
 
 def extract_entities_from_text_llm(
@@ -151,7 +99,7 @@ Only include entities that clearly match the types above. Return an empty array 
         entities_data = json.loads(response_text)
 
         if not isinstance(entities_data, list):
-            print(f"⚠️  LLM returned non-list response: {response_text[:100]}")
+            logger.warning(f"LLM returned non-list response: {response_text[:100]}")
             return []
 
         # Format entities with context
@@ -176,7 +124,7 @@ Only include entities that clearly match the types above. Return an empty array 
             seen_entities.add(entity_key)
 
             # Extract context
-            context = get_entity_context(text, name, context_window)
+            context = get_entity_context(text, entity_name=name, context_window=context_window)
 
             entities.append(
                 {
@@ -192,11 +140,11 @@ Only include entities that clearly match the types above. Return an empty array 
         return entities
 
     except json.JSONDecodeError as e:
-        print(f"⚠️  Failed to parse LLM response as JSON: {e}")
-        print(f"Response was: {response_text[:200]}")
+        logger.error(f"Failed to parse LLM response as JSON: {e}")
+        logger.error(f"Response was: {response_text[:200]}")
         return []
     except Exception as e:
-        print(f"⚠️  LLM entity extraction failed: {e}")
+        logger.error(f"LLM entity extraction failed: {e}")
         return []
 
 

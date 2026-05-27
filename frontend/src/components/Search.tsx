@@ -1,5 +1,7 @@
 import { useState, FormEvent } from 'react';
 import { searchDocuments } from '../api/client';
+import { useCollections } from '../contexts/CollectionContext';
+import CollectionSelector from './CollectionSelector';
 import type { SearchResult } from '../types';
 
 const Search = () => {
@@ -9,6 +11,7 @@ const Search = () => {
   const [hasSearched, setHasSearched] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [limit, setLimit] = useState(10);
+  const { activeCollection } = useCollections();
 
   const handleSearch = async (e: FormEvent) => {
     e.preventDefault();
@@ -22,7 +25,7 @@ const Search = () => {
     setHasSearched(true);
 
     try {
-      const searchResults = await searchDocuments(query, limit);
+      const searchResults = await searchDocuments(query, limit, activeCollection || undefined);
       setResults(searchResults);
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to search documents');
@@ -60,6 +63,13 @@ const Search = () => {
       <h1 className="text-3xl font-bold mb-8 text-gray-800">Search Knowledge Base</h1>
 
       <form onSubmit={handleSearch} className="mb-8">
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Search in Collection
+          </label>
+          <CollectionSelector showAllOption={true} />
+        </div>
+
         <div className="flex gap-4 mb-4">
           <div className="flex-1">
             <input

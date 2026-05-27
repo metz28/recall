@@ -1,17 +1,20 @@
 import { useState } from 'react';
+import { CollectionProvider } from './contexts/CollectionContext';
 import Upload from './components/Upload';
 import Search from './components/Search';
 import Graph from './components/Graph';
+import CollectionManager from './components/CollectionManager';
 
-type View = 'upload' | 'search' | 'graph';
+type View = 'upload' | 'search' | 'graph' | 'collections';
 
 function App() {
   const [currentView, setCurrentView] = useState<View>('search');
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      {/* Header */}
-      <header className="bg-white shadow-sm">
+    <CollectionProvider>
+      <div className="min-h-screen bg-gray-100">
+        {/* Header */}
+        <header className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-6">
             <div className="flex items-center space-x-3">
@@ -114,30 +117,58 @@ function App() {
                   <span>Upload</span>
                 </div>
               </button>
+
+              <button
+                onClick={() => setCurrentView('collections')}
+                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                  currentView === 'collections'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                <div className="flex items-center space-x-2">
+                  <svg
+                    className="h-5 w-5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
+                    />
+                  </svg>
+                  <span>Collections</span>
+                </div>
+              </button>
             </nav>
           </div>
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="py-8">
-        {currentView === 'search' && <Search />}
-        {currentView === 'graph' && <Graph />}
-        {currentView === 'upload' && <Upload />}
-      </main>
+        {/* Main Content */}
+        <main className="py-8">
+          {currentView === 'search' && <Search />}
+          {currentView === 'graph' && <Graph />}
+          {currentView === 'upload' && <Upload />}
+          {currentView === 'collections' && <CollectionManager />}
+        </main>
 
-      {/* Footer */}
-      <footer className="bg-white border-t border-gray-200 mt-auto">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex justify-between items-center text-sm text-gray-500">
-            <p>Powered by vector embeddings and knowledge graphs</p>
-            <p>
-              Built with <span className="text-red-500">&hearts;</span> using React + FastAPI
-            </p>
+        {/* Footer */}
+        <footer className="bg-white border-t border-gray-200 mt-auto">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <div className="flex justify-between items-center text-sm text-gray-500">
+              <p>Powered by vector embeddings and knowledge graphs</p>
+              <p>
+                Built with <span className="text-red-500">&hearts;</span> using React + FastAPI
+              </p>
+            </div>
           </div>
-        </div>
-      </footer>
-    </div>
+        </footer>
+      </div>
+    </CollectionProvider>
   );
 }
 

@@ -1,5 +1,7 @@
 import { useState, useRef, DragEvent, ChangeEvent } from 'react';
-import { uploadDocument, getDocuments } from '../api/client';
+import { uploadDocument, getDocuments, createCollection } from '../api/client';
+import { useCollections } from '../contexts/CollectionContext';
+import CollectionSelector from './CollectionSelector';
 import type { Document } from '../types';
 
 const Upload = () => {
@@ -8,7 +10,11 @@ const Upload = () => {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [showDocuments, setShowDocuments] = useState(false);
+  const [selectedCollection, setSelectedCollection] = useState<string>('default');
+  const [showNewCollection, setShowNewCollection] = useState(false);
+  const [newCollectionName, setNewCollectionName] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { activeCollection, refreshCollections } = useCollections();
 
   const handleDragEnter = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -50,14 +56,20 @@ const Upload = () => {
     setMessage(null);
 
     try {
-      const response = await uploadDocument(file);
+      const response = await uploadDocument(file, selectedCollection);
       setMessage({
         type: 'success',
-        text: `Successfully uploaded "${response.title}" (${response.num_chunks} chunks)`,
+        text: `Successfully uploaded "${response.title}" to "${selectedCollection}" (${response.num_chunks} chunks)`,
       });
 
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
+      }
+
+      await refreshCollections();
+
+      if (showDocuments) {
+        await loadDocuments();
       }
     } catch (error: any) {
       setMessage({
@@ -69,9 +81,36 @@ const Upload = () => {
     }
   };
 
+  const handleCreateCollection = async () => {
+    if (!newCollectionName.trim()) {
+      setMessage({
+        type: 'error',
+        text: 'Collection name cannot be empty',
+      });
+      return;
+    }
+
+    try {
+      await createCollection(newCollectionName);
+      await refreshCollections();
+      setSelectedCollection(newCollectionName.toLowerCase());
+      setNewCollectionName('');
+      setShowNewCollection(false);
+      setMessage({
+        type: 'success',
+        text: `Collection "${newCollectionName}" created successfully`,
+      });
+    } catch (error: any) {
+      setMessage({
+        type: 'error',
+        text: error.response?.data?.detail || 'Failed to create collection',
+      });
+    }
+  };
+
   const loadDocuments = async () => {
     try {
-      const docs = await getDocuments();
+      const docs = await getDocuments(activeCollection || undefined);
       setDocuments(docs);
       setShowDocuments(true);
     } catch (error: any) {
@@ -101,6 +140,51 @@ const Upload = () => {
   return (
     <div className="max-w-4xl mx-auto p-6">
       <h1 className="text-3xl font-bold mb-8 text-gray-800">Upload Documents</h1>
+
+      <div className="mb-6 space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Upload to Collection
+          </label>
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <CollectionSelector
+                showAllOption={false}
+                onChange={(collection) => setSelectedCollection(collection || 'default')}
+              />
+            </div>
+            <button
+              onClick={() => setShowNewCollection(!showNewCollection)}
+              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+            >
+              {showNewCollection ? 'Cancel' : 'New Collection'}
+            </button>
+          </div>
+        </div>
+
+        {showNewCollection && (
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={newCollectionName}
+              onChange={(e) => setNewCollectionName(e.target.value)}
+              placeholder="Enter collection name (lowercase, alphanumeric)"
+              className="flex-1 px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+              onKeyPress={(e) => {
+                if (e.key === 'Enter') {
+                  handleCreateCollection();
+                }
+              }}
+            />
+            <button
+              onClick={handleCreateCollection}
+              className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
+            >
+              Create
+            </button>
+          </div>
+        )}
+      </div>
 
       <div
         className={`border-2 border-dashed rounded-lg p-12 text-center transition-colors ${
@@ -205,6 +289,9 @@ const Upload = () => {
                           <span>{doc.file_type.toUpperCase()}</span>
                           <span>{formatFileSize(doc.file_size)}</span>
                           <span>{doc.num_chunks} chunks</span>
+                          {doc.collection && (
+                            <span className="text-blue-600">📁 {doc.collection}</span>
+                          )}
                         </div>
                         <p className="mt-1 text-xs text-gray-400">
                           Uploaded {formatDate(doc.created_at)}

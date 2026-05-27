@@ -12,6 +12,8 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { getGraphData, getEntityDetail } from '../api/client';
+import { useCollections } from '../contexts/CollectionContext';
+import CollectionSelector from './CollectionSelector';
 import type { GraphData, EntityDetail } from '../types';
 
 const ENTITY_TYPE_COLORS: Record<string, string> = {
@@ -53,17 +55,18 @@ function Graph() {
   const [selectedEntityType, setSelectedEntityType] = useState<string>('');
   const [selectedEntity, setSelectedEntity] = useState<EntityDetail | null>(null);
   const [loadingEntity, setLoadingEntity] = useState(false);
+  const { activeCollection } = useCollections();
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<NodeData>>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
 
-  // Load graph data on mount
+  // Load graph data on mount and when collection changes
   useEffect(() => {
     const loadGraphData = async () => {
       try {
         setLoading(true);
         setError(null);
-        const data = await getGraphData(100);
+        const data = await getGraphData(100, undefined, undefined, activeCollection || undefined);
         setGraphData(data);
       } catch (err) {
         setError('Failed to load graph data. Please try again.');
@@ -73,7 +76,7 @@ function Graph() {
     };
 
     loadGraphData();
-  }, []);
+  }, [activeCollection]);
 
   // Convert graph data to React Flow format
   useEffect(() => {
@@ -277,8 +280,19 @@ function Graph() {
       <div className="bg-white rounded-lg shadow-sm p-6">
         {/* Controls Panel */}
         <div className="mb-4 flex flex-wrap gap-4">
+          {/* Collection Filter */}
+          <div className="flex-1 min-w-[200px]">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Collection
+            </label>
+            <CollectionSelector showAllOption={true} />
+          </div>
+
           {/* Search */}
           <div className="flex-1 min-w-[250px]">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Search
+            </label>
             <input
               type="text"
               placeholder="Search entities..."
@@ -289,18 +303,23 @@ function Graph() {
           </div>
 
           {/* Entity Type Filter */}
-          <select
-            value={selectedEntityType}
-            onChange={(e) => setSelectedEntityType(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          >
-            <option value="">All Types</option>
-            {entityTypes.map((type) => (
-              <option key={type} value={type}>
-                {type} ({graphData.stats.entity_types[type]})
-              </option>
-            ))}
-          </select>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Entity Type
+            </label>
+            <select
+              value={selectedEntityType}
+              onChange={(e) => setSelectedEntityType(e.target.value)}
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="">All Types</option>
+              {entityTypes.map((type) => (
+                <option key={type} value={type}>
+                  {type} ({graphData.stats.entity_types[type]})
+                </option>
+              ))}
+            </select>
+          </div>
 
           {/* Stats */}
           <div className="flex items-center space-x-4 px-4 py-2 bg-gray-50 rounded-lg text-sm">

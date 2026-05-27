@@ -91,3 +91,18 @@ export interface EntityDetail {
   relationships: EntityRelationship[];
   sample_mentions: EntityMention[];
 }
+
+export interface Collection {
+  name: string;
+  document_count: number;
+  total_chunks: number;
+}
+
+export interface CollectionStats {
+  collection: string;
+  document_count: number;
+  total_chunks: number;
+  entity_count: number;
+  created_at: string | null;
+  updated_at: string | null;
+}

@@ -14,7 +14,8 @@ router = APIRouter()
 async def get_full_graph(
     limit: int = Query(100, ge=1, le=500, description="Maximum number of entities to return"),
     entity_type: Optional[str] = Query(None, description="Filter by entity type (e.g., PERSON, ORG, GPE)"),
-    min_mentions: int = Query(1, ge=1, description="Minimum number of mentions required")
+    min_mentions: int = Query(1, ge=1, description="Minimum number of mentions required"),
+    collection: Optional[str] = Query(None, description="Filter by collection")
 ):
     """
     Get the full knowledge graph with nodes (entities) and edges (relationships)
@@ -28,18 +29,29 @@ async def get_full_graph(
         db.row_factory = aiosqlite.Row
 
         # Build query for entities
-        entity_query = """
-            SELECT id, name, entity_type, description, mention_count, variants
-            FROM entities
-            WHERE mention_count >= ?
-        """
-        params = [min_mentions]
+        if collection:
+            entity_query = """
+                SELECT DISTINCT e.id, e.name, e.entity_type, e.description, e.mention_count, e.variants
+                FROM entities e
+                JOIN entity_mentions em ON e.id = em.entity_id
+                JOIN chunks c ON em.chunk_id = c.id
+                JOIN documents d ON c.document_id = d.id
+                WHERE d.collection = ? AND e.mention_count >= ?
+            """
+            params = [collection, min_mentions]
+        else:
+            entity_query = """
+                SELECT id, name, entity_type, description, mention_count, variants
+                FROM entities
+                WHERE mention_count >= ?
+            """
+            params = [min_mentions]
 
         if entity_type:
-            entity_query += " AND entity_type = ?"
+            entity_query += " AND " + ("e." if collection else "") + "entity_type = ?"
             params.append(entity_type)
 
-        entity_query += " ORDER BY mention_count DESC LIMIT ?"
+        entity_query += " ORDER BY " + ("e." if collection else "") + "mention_count DESC LIMIT ?"
         params.append(limit)
 
         # Fetch entities
@@ -83,17 +95,28 @@ async def get_full_graph(
         if len(entity_ids) > 0:
             # Create placeholders for SQL IN clause
             placeholders = ','.join('?' * len(entity_ids))
-            relationship_query = f"""
-                SELECT id, source_entity_id, target_entity_id, relationship_type, context, confidence
-                FROM relationships
-                WHERE source_entity_id IN ({placeholders})
-                  AND target_entity_id IN ({placeholders})
-            """
 
-            cursor = await db.execute(
-                relationship_query,
-                list(entity_ids) + list(entity_ids)
-            )
+            if collection:
+                relationship_query = f"""
+                    SELECT DISTINCT r.id, r.source_entity_id, r.target_entity_id, r.relationship_type, r.context, r.confidence
+                    FROM relationships r
+                    JOIN chunks c ON r.chunk_id = c.id
+                    JOIN documents d ON c.document_id = d.id
+                    WHERE d.collection = ?
+                      AND r.source_entity_id IN ({placeholders})
+                      AND r.target_entity_id IN ({placeholders})
+                """
+                rel_params = [collection] + list(entity_ids) + list(entity_ids)
+            else:
+                relationship_query = f"""
+                    SELECT id, source_entity_id, target_entity_id, relationship_type, context, confidence
+                    FROM relationships
+                    WHERE source_entity_id IN ({placeholders})
+                      AND target_entity_id IN ({placeholders})
+                """
+                rel_params = list(entity_ids) + list(entity_ids)
+
+            cursor = await db.execute(relationship_query, rel_params)
             relationships = await cursor.fetchall()
         else:
             relationships = []
@@ -125,7 +148,8 @@ async def get_full_graph(
 async def get_entity_subgraph(
     entity_id: str,
     depth: int = Query(1, ge=1, le=3, description="Number of relationship hops (1-3)"),
-    limit: int = Query(50, ge=1, le=200, description="Maximum number of entities to return")
+    limit: int = Query(50, ge=1, le=200, description="Maximum number of entities to return"),
+    collection: Optional[str] = Query(None, description="Filter by collection")
 ):
     """
     Get a subgraph centered on a specific entity
@@ -160,14 +184,28 @@ async def get_entity_subgraph(
 
             # Find all relationships connected to current layer
             placeholders = ','.join('?' * len(current_layer))
-            rel_query = f"""
-                SELECT id, source_entity_id, target_entity_id, relationship_type, context, confidence
-                FROM relationships
-                WHERE source_entity_id IN ({placeholders})
-                   OR target_entity_id IN ({placeholders})
-            """
 
-            cursor = await db.execute(rel_query, list(current_layer) + list(current_layer))
+            if collection:
+                rel_query = f"""
+                    SELECT DISTINCT r.id, r.source_entity_id, r.target_entity_id, r.relationship_type, r.context, r.confidence
+                    FROM relationships r
+                    JOIN chunks c ON r.chunk_id = c.id
+                    JOIN documents d ON c.document_id = d.id
+                    WHERE d.collection = ?
+                      AND (r.source_entity_id IN ({placeholders})
+                       OR r.target_entity_id IN ({placeholders}))
+                """
+                rel_params = [collection] + list(current_layer) + list(current_layer)
+            else:
+                rel_query = f"""
+                    SELECT id, source_entity_id, target_entity_id, relationship_type, context, confidence
+                    FROM relationships
+                    WHERE source_entity_id IN ({placeholders})
+                       OR target_entity_id IN ({placeholders})
+                """
+                rel_params = list(current_layer) + list(current_layer)
+
+            cursor = await db.execute(rel_query, rel_params)
             relationships = await cursor.fetchall()
 
             # Collect new entity IDs for next layer

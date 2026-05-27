@@ -72,7 +72,8 @@ async def search_hybrid(
     enable_entity_expansion: bool = Query(
         default=True,
         description="Enable entity-based graph expansion"
-    )
+    ),
+    collection: Optional[str] = Query(None, description="Filter by collection")
 ):
     """
     Hybrid search combining vector similarity and knowledge graph context
@@ -108,7 +109,8 @@ async def search_hybrid(
             graph_depth=graph_depth,
             graph_expansion_limit=graph_expansion_limit,
             min_vector_score=min_vector_score,
-            enable_entity_expansion=enable_entity_expansion
+            enable_entity_expansion=enable_entity_expansion,
+            collection=collection
         )
 
         # Convert to response model
@@ -127,7 +129,8 @@ async def search_hybrid(
                 "graph_depth": graph_depth,
                 "graph_expansion_limit": graph_expansion_limit,
                 "min_vector_score": min_vector_score,
-                "enable_entity_expansion": enable_entity_expansion
+                "enable_entity_expansion": enable_entity_expansion,
+                "collection": collection
             }
         )
 

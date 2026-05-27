@@ -1,11 +1,13 @@
 """
 Document ingestion API endpoints
 """
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Query
 from pathlib import Path
 import aiosqlite
 from uuid import uuid4
 from datetime import datetime
+import re
+from typing import Optional
 
 from core.config import settings
 from core.logging_config import get_logger
@@ -32,8 +34,33 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
+def validate_collection_name(collection: str) -> str:
+    """Validate and normalize collection name"""
+    # Convert to lowercase
+    collection = collection.lower().strip()
+
+    # Check format: alphanumeric, hyphens, underscores only
+    if not re.match(r'^[a-z0-9_-]+$', collection):
+        raise HTTPException(
+            status_code=400,
+            detail="Collection name must contain only lowercase letters, numbers, hyphens, and underscores"
+        )
+
+    # Check length
+    if len(collection) > 50:
+        raise HTTPException(
+            status_code=400,
+            detail="Collection name must be 50 characters or less"
+        )
+
+    return collection
+
+
 @router.post("/upload")
-async def upload_document(file: UploadFile = File(...)):
+async def upload_document(
+    file: UploadFile = File(...),
+    collection: str = Form("default")
+):
     """
     Upload and process a document
 
@@ -44,6 +71,9 @@ async def upload_document(file: UploadFile = File(...)):
     4. Generate embeddings
     5. Store in Qdrant (vectors) and SQLite (metadata)
     """
+    # Validate collection name
+    collection = validate_collection_name(collection)
+
     # Validate file type
     file_ext = Path(file.filename).suffix.lower()
     if file_ext not in settings.allowed_extensions_list:
@@ -73,7 +103,8 @@ async def upload_document(file: UploadFile = File(...)):
             source_type="file",
             source_path=file.filename,
             file_type=file_type,
-            file_size=len(content)
+            file_size=len(content),
+            collection=collection
         )
 
         # Chunk text
@@ -160,7 +191,8 @@ async def upload_document(file: UploadFile = File(...)):
                             "document_id": doc_id,
                             "chunk_index": idx,
                             "content": chunk_content,
-                            "document_title": doc_metadata.title
+                            "document_title": doc_metadata.title,
+                            "collection": doc_metadata.collection
                         }
                     )
                 )
@@ -349,13 +381,19 @@ async def upload_document(file: UploadFile = File(...)):
 
 
 @router.get("/documents")
-async def list_documents():
-    """List all ingested documents"""
+async def list_documents(collection: Optional[str] = Query(None)):
+    """List all ingested documents, optionally filtered by collection"""
     async with aiosqlite.connect(settings.sqlite_path) as db:
         db.row_factory = aiosqlite.Row
-        async with db.execute(
-            "SELECT * FROM documents ORDER BY created_at DESC"
-        ) as cursor:
+
+        if collection:
+            query = "SELECT * FROM documents WHERE collection = ? ORDER BY created_at DESC"
+            params = (collection,)
+        else:
+            query = "SELECT * FROM documents ORDER BY created_at DESC"
+            params = ()
+
+        async with db.execute(query, params) as cursor:
             rows = await cursor.fetchall()
             return [dict(row) for row in rows]
 

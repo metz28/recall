@@ -12,6 +12,22 @@ from core.logging_config import get_logger
 logger = get_logger(__name__)
 
 
+async def migrate_collections():
+    """Migrate existing documents to use default collection"""
+    async with aiosqlite.connect(settings.sqlite_path) as db:
+        # Update NULL collections to "default"
+        await db.execute("""
+            UPDATE documents
+            SET collection = 'default'
+            WHERE collection IS NULL
+        """)
+        rows_updated = db.total_changes
+        await db.commit()
+
+        if rows_updated > 0:
+            logger.info(f"Migrated {rows_updated} documents to 'default' collection")
+
+
 async def init_sqlite():
     """Initialize SQLite database with schema"""
     db_path = Path(settings.sqlite_path)
@@ -120,6 +136,7 @@ async def init_sqlite():
         await db.execute("CREATE INDEX IF NOT EXISTS idx_relationships_source ON relationships(source_entity_id)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_relationships_target ON relationships(target_entity_id)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_relationships_type ON relationships(relationship_type)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_documents_collection ON documents(collection)")
 
         await db.commit()
         logger.info("SQLite initialized")
@@ -190,5 +207,6 @@ async def init_kuzu():
 async def init_databases():
     """Initialize all databases"""
     await init_sqlite()
+    await migrate_collections()
     await init_qdrant()
     await init_kuzu()

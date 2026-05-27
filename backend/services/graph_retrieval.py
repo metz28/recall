@@ -37,7 +37,8 @@ async def get_chunk_entities(chunk_id: str) -> list[str]:
 async def get_chunks_by_entities(
     entity_names: list[str],
     limit: int = 10,
-    exclude_chunk_ids: set[str] = None
+    exclude_chunk_ids: set[str] = None,
+    collection: Optional[str] = None
 ) -> list[dict]:
     """
     Find chunks that mention any of the given entities
@@ -46,6 +47,7 @@ async def get_chunks_by_entities(
         entity_names: List of entity names (normalized)
         limit: Maximum number of chunks to return
         exclude_chunk_ids: Set of chunk IDs to exclude (to avoid duplicates)
+        collection: Optional collection filter
 
     Returns:
         List of chunk dictionaries with id, content, document_id, document_title, chunk_index
@@ -78,6 +80,10 @@ async def get_chunks_by_entities(
         if exclude_chunk_ids:
             query += f" AND c.id NOT IN ({exclude_placeholders})"
             params.extend(list(exclude_chunk_ids))
+
+        if collection:
+            query += " AND d.collection = ?"
+            params.append(collection)
 
         query += """
             GROUP BY c.id

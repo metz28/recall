@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 
 from core.config import settings
 from core.logging_config import setup_logging, get_logger
-from api import ingest, search, chat, entities, hybrid_search, graph, notion
+from api import ingest, search, chat, entities, hybrid_search, graph, notion, collections
 from db.init_db import init_databases
 
 # Initialize logging
@@ -68,6 +68,7 @@ app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
 app.include_router(entities.router, prefix="/api/entities", tags=["entities"])
 app.include_router(graph.router, prefix="/api/graph", tags=["graph"])
 app.include_router(notion.router, prefix="/api/notion", tags=["notion"])
+app.include_router(collections.router, prefix="/api/collections", tags=["collections"])
 
 
 @app.get("/")

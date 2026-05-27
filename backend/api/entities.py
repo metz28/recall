@@ -16,7 +16,8 @@ async def list_entities(
     entity_type: Optional[str] = Query(None, description="Filter by entity type (PERSON, ORG, etc.)"),
     min_mentions: Optional[int] = Query(None, description="Minimum number of mentions"),
     limit: int = Query(100, ge=1, le=1000, description="Maximum number of entities to return"),
-    offset: int = Query(0, ge=0, description="Number of entities to skip")
+    offset: int = Query(0, ge=0, description="Number of entities to skip"),
+    collection: Optional[str] = Query(None, description="Filter by collection")
 ):
     """
     List entities with optional filters and pagination
@@ -28,18 +29,28 @@ async def list_entities(
         db.row_factory = aiosqlite.Row
 
         # Build query with filters
-        query = "SELECT * FROM entities WHERE 1=1"
-        params = []
+        if collection:
+            # Filter entities by collection - join through documents
+            query = """SELECT DISTINCT e.*
+                       FROM entities e
+                       JOIN entity_mentions em ON e.id = em.entity_id
+                       JOIN chunks c ON em.chunk_id = c.id
+                       JOIN documents d ON c.document_id = d.id
+                       WHERE d.collection = ?"""
+            params = [collection]
+        else:
+            query = "SELECT * FROM entities WHERE 1=1"
+            params = []
 
         if entity_type:
-            query += " AND entity_type = ?"
+            query += " AND e.entity_type = ?" if collection else " AND entity_type = ?"
             params.append(entity_type.upper())
 
         if min_mentions:
-            query += " AND mention_count >= ?"
+            query += " AND e.mention_count >= ?" if collection else " AND mention_count >= ?"
             params.append(min_mentions)
 
-        query += " ORDER BY mention_count DESC, name ASC LIMIT ? OFFSET ?"
+        query += " ORDER BY " + ("e.mention_count" if collection else "mention_count") + " DESC, " + ("e.name" if collection else "name") + " ASC LIMIT ? OFFSET ?"
         params.extend([limit, offset])
 
         async with db.execute(query, params) as cursor:
@@ -57,15 +68,24 @@ async def list_entities(
                 entities.append(entity)
 
             # Get total count for pagination
-            count_query = "SELECT COUNT(*) FROM entities WHERE 1=1"
-            count_params = []
+            if collection:
+                count_query = """SELECT COUNT(DISTINCT e.id)
+                                 FROM entities e
+                                 JOIN entity_mentions em ON e.id = em.entity_id
+                                 JOIN chunks c ON em.chunk_id = c.id
+                                 JOIN documents d ON c.document_id = d.id
+                                 WHERE d.collection = ?"""
+                count_params = [collection]
+            else:
+                count_query = "SELECT COUNT(*) FROM entities WHERE 1=1"
+                count_params = []
 
             if entity_type:
-                count_query += " AND entity_type = ?"
+                count_query += " AND e.entity_type = ?" if collection else " AND entity_type = ?"
                 count_params.append(entity_type.upper())
 
             if min_mentions:
-                count_query += " AND mention_count >= ?"
+                count_query += " AND e.mention_count >= ?" if collection else " AND mention_count >= ?"
                 count_params.append(min_mentions)
 
             async with db.execute(count_query, count_params) as count_cursor:
@@ -192,7 +212,9 @@ async def get_entity_chunks(
 
 
 @router.get("/types/summary")
-async def get_entity_types_summary():
+async def get_entity_types_summary(
+    collection: Optional[str] = Query(None, description="Filter by collection")
+):
     """
     Get summary of entity types and their counts
 
@@ -202,12 +224,24 @@ async def get_entity_types_summary():
     async with aiosqlite.connect(settings.sqlite_path) as db:
         db.row_factory = aiosqlite.Row
 
-        async with db.execute(
-            """SELECT entity_type, COUNT(*) as count, SUM(mention_count) as total_mentions
-               FROM entities
-               GROUP BY entity_type
-               ORDER BY count DESC"""
-        ) as cursor:
+        if collection:
+            query = """SELECT e.entity_type, COUNT(DISTINCT e.id) as count, SUM(e.mention_count) as total_mentions
+                       FROM entities e
+                       JOIN entity_mentions em ON e.id = em.entity_id
+                       JOIN chunks c ON em.chunk_id = c.id
+                       JOIN documents d ON c.document_id = d.id
+                       WHERE d.collection = ?
+                       GROUP BY e.entity_type
+                       ORDER BY count DESC"""
+            params = (collection,)
+        else:
+            query = """SELECT entity_type, COUNT(*) as count, SUM(mention_count) as total_mentions
+                       FROM entities
+                       GROUP BY entity_type
+                       ORDER BY count DESC"""
+            params = ()
+
+        async with db.execute(query, params) as cursor:
             rows = await cursor.fetchall()
 
             return {
@@ -282,7 +316,8 @@ async def get_entity_relationships(
 async def list_all_relationships(
     relationship_type: Optional[str] = Query(None, description="Filter by relationship type"),
     limit: int = Query(100, ge=1, le=1000),
-    offset: int = Query(0, ge=0)
+    offset: int = Query(0, ge=0),
+    collection: Optional[str] = Query(None, description="Filter by collection")
 ):
     """
     List all relationships with optional filters
@@ -299,14 +334,26 @@ async def list_all_relationships(
         db.row_factory = aiosqlite.Row
 
         # Build query
-        query = """SELECT r.*,
-                          e1.name as source_name, e1.entity_type as source_type,
-                          e2.name as target_name, e2.entity_type as target_type
-                   FROM relationships r
-                   JOIN entities e1 ON r.source_entity_id = e1.id
-                   JOIN entities e2 ON r.target_entity_id = e2.id
-                   WHERE 1=1"""
-        params = []
+        if collection:
+            query = """SELECT DISTINCT r.*,
+                              e1.name as source_name, e1.entity_type as source_type,
+                              e2.name as target_name, e2.entity_type as target_type
+                       FROM relationships r
+                       JOIN entities e1 ON r.source_entity_id = e1.id
+                       JOIN entities e2 ON r.target_entity_id = e2.id
+                       JOIN chunks c ON r.chunk_id = c.id
+                       JOIN documents d ON c.document_id = d.id
+                       WHERE d.collection = ?"""
+            params = [collection]
+        else:
+            query = """SELECT r.*,
+                              e1.name as source_name, e1.entity_type as source_type,
+                              e2.name as target_name, e2.entity_type as target_type
+                       FROM relationships r
+                       JOIN entities e1 ON r.source_entity_id = e1.id
+                       JOIN entities e2 ON r.target_entity_id = e2.id
+                       WHERE 1=1"""
+            params = []
 
         if relationship_type:
             query += " AND r.relationship_type = ?"
@@ -319,11 +366,19 @@ async def list_all_relationships(
             relationships = [dict(row) for row in await cursor.fetchall()]
 
         # Get total count
-        count_query = "SELECT COUNT(*) FROM relationships WHERE 1=1"
-        count_params = []
+        if collection:
+            count_query = """SELECT COUNT(DISTINCT r.id)
+                             FROM relationships r
+                             JOIN chunks c ON r.chunk_id = c.id
+                             JOIN documents d ON c.document_id = d.id
+                             WHERE d.collection = ?"""
+            count_params = [collection]
+        else:
+            count_query = "SELECT COUNT(*) FROM relationships WHERE 1=1"
+            count_params = []
 
         if relationship_type:
-            count_query += " AND relationship_type = ?"
+            count_query += " AND " + ("r." if collection else "") + "relationship_type = ?"
             count_params.append(relationship_type.lower())
 
         async with db.execute(count_query, count_params) as cursor:
@@ -338,7 +393,9 @@ async def list_all_relationships(
 
 
 @router.get("/relationships/types/summary")
-async def get_relationship_types_summary():
+async def get_relationship_types_summary(
+    collection: Optional[str] = Query(None, description="Filter by collection")
+):
     """
     Get summary of relationship types and their counts
 
@@ -348,12 +405,23 @@ async def get_relationship_types_summary():
     async with aiosqlite.connect(settings.sqlite_path) as db:
         db.row_factory = aiosqlite.Row
 
-        async with db.execute(
-            """SELECT relationship_type, COUNT(*) as count
-               FROM relationships
-               GROUP BY relationship_type
-               ORDER BY count DESC"""
-        ) as cursor:
+        if collection:
+            query = """SELECT r.relationship_type, COUNT(DISTINCT r.id) as count
+                       FROM relationships r
+                       JOIN chunks c ON r.chunk_id = c.id
+                       JOIN documents d ON c.document_id = d.id
+                       WHERE d.collection = ?
+                       GROUP BY r.relationship_type
+                       ORDER BY count DESC"""
+            params = (collection,)
+        else:
+            query = """SELECT relationship_type, COUNT(*) as count
+                       FROM relationships
+                       GROUP BY relationship_type
+                       ORDER BY count DESC"""
+            params = ()
+
+        async with db.execute(query, params) as cursor:
             rows = await cursor.fetchall()
 
             return {

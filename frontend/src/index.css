@@ -60,3 +60,235 @@ code {
 .react-flow__panel {
   margin: 12px;
 }
+
+/* Tag Component Styles */
+.tag-input-container {
+  width: 100%;
+}
+
+.tag-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.tag-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.75rem;
+  background-color: #ddd6fe;
+  color: #5b21b6;
+  font-size: 0.875rem;
+  border-radius: 9999px;
+  transition: background-color 0.2s;
+}
+
+.tag-pill.selected {
+  background-color: #c4b5fd;
+  color: #4c1d95;
+}
+
+.tag-remove {
+  background: none;
+  border: none;
+  color: #5b21b6;
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  margin-left: 0.25rem;
+  transition: color 0.2s;
+}
+
+.tag-remove:hover {
+  color: #4c1d95;
+}
+
+.tag-input-wrapper {
+  position: relative;
+}
+
+.tag-input {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.375rem;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.tag-input:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.tag-input:disabled {
+  background-color: #f3f4f6;
+  cursor: not-allowed;
+}
+
+.tag-autocomplete {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 0.25rem;
+  background-color: white;
+  border: 1px solid #d1d5db;
+  border-radius: 0.375rem;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 50;
+}
+
+.tag-autocomplete-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.tag-autocomplete-item:hover {
+  background-color: #f3f4f6;
+}
+
+.tag-name {
+  font-weight: 500;
+  color: #374151;
+}
+
+.tag-count {
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.tag-error {
+  margin-top: 0.25rem;
+  font-size: 0.875rem;
+  color: #dc2626;
+}
+
+.tag-count-indicator {
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  color: #6b7280;
+  text-align: right;
+}
+
+/* Tag Selector Styles */
+.tag-selector {
+  position: relative;
+}
+
+.selected-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.clear-all-btn {
+  padding: 0.25rem 0.5rem;
+  background-color: #f3f4f6;
+  color: #374151;
+  font-size: 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.clear-all-btn:hover {
+  background-color: #e5e7eb;
+}
+
+.tag-selector-toggle {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  background-color: white;
+  border: 1px solid #d1d5db;
+  border-radius: 0.375rem;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.tag-selector-toggle:hover {
+  border-color: #9ca3af;
+}
+
+.tag-selector-toggle:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.selected-count {
+  color: #3b82f6;
+  font-weight: 600;
+}
+
+.dropdown-arrow {
+  transition: transform 0.2s;
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.dropdown-arrow.open {
+  transform: rotate(180deg);
+}
+
+.tag-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 0.25rem;
+  background-color: white;
+  border: 1px solid #d1d5db;
+  border-radius: 0.375rem;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  max-height: 300px;
+  overflow-y: auto;
+  z-index: 50;
+}
+
+.tag-dropdown-empty {
+  padding: 1rem;
+  text-align: center;
+  color: #6b7280;
+  font-size: 0.875rem;
+}
+
+.tag-checkbox-item {
+  display: flex;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.tag-checkbox-item:hover {
+  background-color: #f3f4f6;
+}
+
+.tag-checkbox-item input[type="checkbox"] {
+  margin-right: 0.5rem;
+  cursor: pointer;
+}
+
+.tag-checkbox-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex: 1;
+}

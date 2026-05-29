@@ -1,7 +1,9 @@
 import { useState, FormEvent } from 'react';
 import { searchDocuments } from '../api/client';
 import { useCollections } from '../contexts/CollectionContext';
+import { useTags } from '../contexts/TagContext';
 import CollectionSelector from './CollectionSelector';
+import TagSelector from './TagSelector';
 import type { SearchResult } from '../types';
 
 const Search = () => {
@@ -12,6 +14,7 @@ const Search = () => {
   const [error, setError] = useState<string | null>(null);
   const [limit, setLimit] = useState(10);
   const { activeCollection } = useCollections();
+  const { selectedTags } = useTags();
 
   const handleSearch = async (e: FormEvent) => {
     e.preventDefault();
@@ -25,7 +28,8 @@ const Search = () => {
     setHasSearched(true);
 
     try {
-      const searchResults = await searchDocuments(query, limit, activeCollection || undefined);
+      const tagsString = selectedTags.length > 0 ? selectedTags.join(',') : undefined;
+      const searchResults = await searchDocuments(query, limit, activeCollection || undefined, tagsString);
       setResults(searchResults);
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to search documents');
@@ -68,6 +72,13 @@ const Search = () => {
             Search in Collection
           </label>
           <CollectionSelector showAllOption={true} />
+        </div>
+
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Filter by Tags
+          </label>
+          <TagSelector />
         </div>
 
         <div className="flex gap-4 mb-4">

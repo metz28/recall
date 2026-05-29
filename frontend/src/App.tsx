@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { CollectionProvider } from './contexts/CollectionContext';
+import { TagProvider } from './contexts/TagContext';
 import Upload from './components/Upload';
 import Search from './components/Search';
 import Graph from './components/Graph';
@@ -12,7 +13,8 @@ function App() {
 
   return (
     <CollectionProvider>
-      <div className="min-h-screen bg-gray-100">
+      <TagProvider>
+        <div className="min-h-screen bg-gray-100">
         {/* Header */}
         <header className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -167,7 +169,8 @@ function App() {
             </div>
           </div>
         </footer>
-      </div>
+        </div>
+      </TagProvider>
     </CollectionProvider>
   );
 }

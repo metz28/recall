@@ -1,7 +1,9 @@
 import { useState, useRef, DragEvent, ChangeEvent } from 'react';
 import { uploadDocument, getDocuments, createCollection } from '../api/client';
 import { useCollections } from '../contexts/CollectionContext';
+import { useTags } from '../contexts/TagContext';
 import CollectionSelector from './CollectionSelector';
+import TagInput from './TagInput';
 import type { Document } from '../types';
 
 const Upload = () => {
@@ -13,8 +15,10 @@ const Upload = () => {
   const [selectedCollection, setSelectedCollection] = useState<string>('default');
   const [showNewCollection, setShowNewCollection] = useState(false);
   const [newCollectionName, setNewCollectionName] = useState('');
+  const [documentTags, setDocumentTags] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { activeCollection, refreshCollections } = useCollections();
+  const { refreshTags } = useTags();
 
   const handleDragEnter = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -56,7 +60,8 @@ const Upload = () => {
     setMessage(null);
 
     try {
-      const response = await uploadDocument(file, selectedCollection);
+      const tagsString = documentTags.join(',');
+      const response = await uploadDocument(file, selectedCollection, tagsString);
       setMessage({
         type: 'success',
         text: `Successfully uploaded "${response.title}" to "${selectedCollection}" (${response.num_chunks} chunks)`,
@@ -66,7 +71,11 @@ const Upload = () => {
         fileInputRef.current.value = '';
       }
 
+      // Clear tags after successful upload
+      setDocumentTags([]);
+
       await refreshCollections();
+      await refreshTags();
 
       if (showDocuments) {
         await loadDocuments();
@@ -184,6 +193,17 @@ const Upload = () => {
             </button>
           </div>
         )}
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Tags (optional)
+          </label>
+          <TagInput
+            value={documentTags}
+            onChange={setDocumentTags}
+            placeholder="Add tags (comma-separated)"
+          />
+        </div>
       </div>
 
       <div
@@ -293,6 +313,18 @@ const Upload = () => {
                             <span className="text-blue-600">📁 {doc.collection}</span>
                           )}
                         </div>
+                        {doc.tags && doc.tags.length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-1">
+                            {doc.tags.map((tag) => (
+                              <span
+                                key={tag}
+                                className="px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded-full"
+                              >
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                         <p className="mt-1 text-xs text-gray-400">
                           Uploaded {formatDate(doc.created_at)}
                         </p>

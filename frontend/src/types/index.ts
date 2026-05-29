@@ -106,3 +106,8 @@ export interface CollectionStats {
   created_at: string | null;
   updated_at: string | null;
 }
+
+export interface Tag {
+  tag: string;
+  count: number;
+}

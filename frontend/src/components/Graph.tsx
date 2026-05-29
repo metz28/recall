@@ -13,7 +13,9 @@ import {
 import '@xyflow/react/dist/style.css';
 import { getGraphData, getEntityDetail } from '../api/client';
 import { useCollections } from '../contexts/CollectionContext';
+import { useTags } from '../contexts/TagContext';
 import CollectionSelector from './CollectionSelector';
+import TagSelector from './TagSelector';
 import type { GraphData, EntityDetail } from '../types';
 
 const ENTITY_TYPE_COLORS: Record<string, string> = {
@@ -56,17 +58,19 @@ function Graph() {
   const [selectedEntity, setSelectedEntity] = useState<EntityDetail | null>(null);
   const [loadingEntity, setLoadingEntity] = useState(false);
   const { activeCollection } = useCollections();
+  const { selectedTags } = useTags();
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<NodeData>>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
 
-  // Load graph data on mount and when collection changes
+  // Load graph data on mount and when collection or tags change
   useEffect(() => {
     const loadGraphData = async () => {
       try {
         setLoading(true);
         setError(null);
-        const data = await getGraphData(100, undefined, undefined, activeCollection || undefined);
+        const tagsString = selectedTags.length > 0 ? selectedTags.join(',') : undefined;
+        const data = await getGraphData(100, undefined, undefined, activeCollection || undefined, tagsString);
         setGraphData(data);
       } catch (err) {
         setError('Failed to load graph data. Please try again.');
@@ -76,7 +80,7 @@ function Graph() {
     };
 
     loadGraphData();
-  }, [activeCollection]);
+  }, [activeCollection, selectedTags]);
 
   // Convert graph data to React Flow format
   useEffect(() => {
@@ -286,6 +290,14 @@ function Graph() {
               Collection
             </label>
             <CollectionSelector showAllOption={true} />
+          </div>
+
+          {/* Tag Filter */}
+          <div className="flex-1 min-w-[200px]">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Tags
+            </label>
+            <TagSelector />
           </div>
 
           {/* Search */}

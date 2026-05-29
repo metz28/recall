@@ -3,7 +3,7 @@ Search API endpoints
 """
 from fastapi import APIRouter, Query
 from qdrant_client import QdrantClient
-from qdrant_client.models import Filter, FieldCondition, MatchValue
+from qdrant_client.models import Filter, FieldCondition, MatchValue, MatchAny
 from typing import Optional
 
 from core.config import settings
@@ -16,7 +16,8 @@ router = APIRouter()
 async def search(
     query: str = Query(..., description="Search query"),
     limit: int = Query(10, ge=1, le=50, description="Number of results"),
-    collection: Optional[str] = Query(None, description="Filter by collection")
+    collection: Optional[str] = Query(None, description="Filter by collection"),
+    tags: Optional[str] = Query(None, description="Comma-separated tags (OR logic)")
 ):
     """
     Semantic search across all documents
@@ -26,17 +27,32 @@ async def search(
     # Generate query embedding
     query_embedding = embed_text(query)
 
-    # Build query filter for collection
-    query_filter = None
+    # Build query filter for collection and tags
+    filter_conditions = []
+
     if collection:
-        query_filter = Filter(
-            must=[
-                FieldCondition(
-                    key="collection",
-                    match=MatchValue(value=collection)
-                )
-            ]
+        filter_conditions.append(
+            FieldCondition(
+                key="collection",
+                match=MatchValue(value=collection)
+            )
         )
+
+    if tags:
+        # Parse comma-separated tags and build OR filter (MatchAny)
+        tag_list = [tag.strip() for tag in tags.split(',') if tag.strip()]
+        if tag_list:
+            filter_conditions.append(
+                FieldCondition(
+                    key="tags",
+                    match=MatchAny(any=tag_list)
+                )
+            )
+
+    # Combine filters with AND logic
+    query_filter = None
+    if filter_conditions:
+        query_filter = Filter(must=filter_conditions)
 
     # Search in Qdrant
     qdrant = QdrantClient(host=settings.qdrant_host, port=settings.qdrant_port)
@@ -57,7 +73,8 @@ async def search(
             "document_id": result.payload.get("document_id"),
             "document_title": result.payload.get("document_title"),
             "chunk_index": result.payload.get("chunk_index"),
-            "collection": result.payload.get("collection")
+            "collection": result.payload.get("collection"),
+            "tags": result.payload.get("tags", [])
         })
 
     return formatted_results

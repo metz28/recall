@@ -3,7 +3,7 @@ Hybrid search service combining vector and graph retrieval
 """
 from typing import Optional
 from qdrant_client import QdrantClient
-from qdrant_client.models import Filter, FieldCondition, MatchValue
+from qdrant_client.models import Filter, FieldCondition, MatchValue, MatchAny
 
 from core.config import settings
 from core.logging_config import get_logger
@@ -27,7 +27,8 @@ async def hybrid_search(
     graph_expansion_limit: int = 5,
     min_vector_score: float = 0.3,
     enable_entity_expansion: bool = True,
-    collection: Optional[str] = None
+    collection: Optional[str] = None,
+    tags: Optional[str] = None
 ) -> list[dict]:
     """
     Perform hybrid search combining vector similarity and graph context
@@ -41,6 +42,7 @@ async def hybrid_search(
         min_vector_score: Minimum vector similarity score threshold
         enable_entity_expansion: Whether to expand search via related entities
         collection: Optional collection filter
+        tags: Optional comma-separated tags filter (OR logic)
 
     Returns:
         List of result dictionaries sorted by hybrid score
@@ -62,17 +64,32 @@ async def hybrid_search(
     query_embedding = embed_text(query)
     qdrant = QdrantClient(host=settings.qdrant_host, port=settings.qdrant_port)
 
-    # Build query filter for collection
-    query_filter = None
+    # Build query filter for collection and tags
+    filter_conditions = []
+
     if collection:
-        query_filter = Filter(
-            must=[
-                FieldCondition(
-                    key="collection",
-                    match=MatchValue(value=collection)
-                )
-            ]
+        filter_conditions.append(
+            FieldCondition(
+                key="collection",
+                match=MatchValue(value=collection)
+            )
         )
+
+    if tags:
+        # Parse comma-separated tags and build OR filter (MatchAny)
+        tag_list = [tag.strip() for tag in tags.split(',') if tag.strip()]
+        if tag_list:
+            filter_conditions.append(
+                FieldCondition(
+                    key="tags",
+                    match=MatchAny(any=tag_list)
+                )
+            )
+
+    # Combine filters with AND logic
+    query_filter = None
+    if filter_conditions:
+        query_filter = Filter(must=filter_conditions)
 
     vector_results = qdrant.search(
         collection_name="recall_chunks",
@@ -143,7 +160,8 @@ async def hybrid_search(
                 related_entity_names,
                 limit=graph_expansion_limit,
                 exclude_chunk_ids=existing_chunk_ids,
-                collection=collection
+                collection=collection,
+                tags=tags
             )
 
             # Score graph-retrieved chunks

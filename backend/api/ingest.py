@@ -34,6 +34,31 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
+def validate_and_parse_tags(tags_str: str) -> list:
+    """
+    Validate and parse comma-separated tags string.
+
+    Args:
+        tags_str: Comma-separated tags string
+
+    Returns:
+        List of validated tags
+
+    Raises:
+        HTTPException: If tags are invalid
+    """
+    if not tags_str or not tags_str.strip():
+        return []
+
+    # Import validation from tags API
+    from api.tags import validate_and_parse_tags as validate_tags
+
+    try:
+        return validate_tags(tags_str)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 def validate_collection_name(collection: str) -> str:
     """Validate and normalize collection name"""
     # Convert to lowercase
@@ -59,7 +84,8 @@ def validate_collection_name(collection: str) -> str:
 @router.post("/upload")
 async def upload_document(
     file: UploadFile = File(...),
-    collection: str = Form("default")
+    collection: str = Form("default"),
+    tags: str = Form("")
 ):
     """
     Upload and process a document
@@ -73,6 +99,9 @@ async def upload_document(
     """
     # Validate collection name
     collection = validate_collection_name(collection)
+
+    # Validate and parse tags
+    parsed_tags = validate_and_parse_tags(tags)
 
     # Validate file type
     file_ext = Path(file.filename).suffix.lower()
@@ -163,7 +192,7 @@ async def upload_document(
                     doc_metadata.file_size,
                     doc_metadata.num_chunks,
                     doc_metadata.collection,
-                    "[]"  # Empty tags for now
+                    json.dumps(parsed_tags)
                 )
             )
 
@@ -192,7 +221,8 @@ async def upload_document(
                             "chunk_index": idx,
                             "content": chunk_content,
                             "document_title": doc_metadata.title,
-                            "collection": doc_metadata.collection
+                            "collection": doc_metadata.collection,
+                            "tags": parsed_tags
                         }
                     )
                 )
@@ -354,6 +384,7 @@ async def upload_document(
             "document_id": doc_id,
             "title": doc_metadata.title,
             "num_chunks": len(chunks),
+            "tags": parsed_tags,
             "message": f"Document processed successfully with {len(chunks)} chunks"
         }
 

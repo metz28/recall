@@ -6,7 +6,9 @@ A personal knowledge base with hybrid vector + graph retrieval. Drop in PDFs, do
 
 - **Hybrid Retrieval**: Combines vector search (semantic similarity) with knowledge graph (entity relationships)
 - **Entity Extraction**: Automatically builds a knowledge graph of people, organizations, concepts, and their relationships
-- **Modern Web UI**: React TypeScript interface for document upload and semantic search
+- **Tags & Collections**: Organize documents with tags and collections for powerful filtering
+- **Graph Visualization**: Interactive knowledge graph visualization with entity relationships
+- **Modern Web UI**: React TypeScript interface with drag-and-drop upload, search, and graph exploration
 - **Self-Contained**: Runs entirely in Docker with no external dependencies
 - **Production-Ready Architecture**: FastAPI backend, Qdrant for vectors, Kuzu for graphs, SQLite for metadata
 
@@ -72,8 +74,11 @@ npm run dev
 Then access the web UI at **http://localhost:3000**
 
 The web UI provides:
-- Drag-and-drop document upload
+- Drag-and-drop document upload with tag support
 - Semantic search with similarity scores
+- Tag-based filtering and organization
+- Collection management for document workspaces
+- Interactive knowledge graph visualization
 - Document management and viewing
 
 See **[frontend/README.md](frontend/README.md)** for full frontend documentation.
@@ -98,11 +103,17 @@ recall/
 │   ├── api/
 │   │   ├── ingest.py        # Document upload & processing
 │   │   ├── search.py        # Semantic search
-│   │   └── chat.py          # RAG chat endpoints
+│   │   ├── chat.py          # RAG chat endpoints
+│   │   ├── tags.py          # Tag management
+│   │   ├── collections.py   # Collections/workspaces
+│   │   ├── entities.py      # Entity browsing
+│   │   └── graph.py         # Knowledge graph API
 │   ├── services/
 │   │   ├── document_loader.py  # PDF, DOCX, TXT parsing
 │   │   ├── chunking.py         # Text chunking
-│   │   └── embedding.py        # Sentence transformers
+│   │   ├── embedding.py        # Sentence transformers
+│   │   ├── graph_service.py    # Kuzu graph operations
+│   │   └── entity_extraction.py # Entity and relationship extraction
 │   ├── models/
 │   │   └── document.py      # Pydantic models
 │   └── db/
@@ -118,8 +129,15 @@ recall/
 ### Upload a Document
 
 ```bash
+# Basic upload
 curl -X POST "http://localhost:8000/api/ingest/upload" \
   -F "file=@document.pdf"
+
+# Upload with tags and collection
+curl -X POST "http://localhost:8000/api/ingest/upload" \
+  -F "file=@document.pdf" \
+  -F "tags=machine-learning,ai,research" \
+  -F "collection=research-papers"
 ```
 
 ### Search
@@ -127,7 +145,17 @@ curl -X POST "http://localhost:8000/api/ingest/upload" \
 #### Vector Search (Semantic Similarity)
 
 ```bash
+# Basic search
 curl "http://localhost:8000/api/search?query=machine+learning&limit=5"
+
+# Search with tag filter
+curl "http://localhost:8000/api/search?query=neural+networks&tags=ai,deep-learning"
+
+# Search within a collection
+curl "http://localhost:8000/api/search?query=transformers&collection=research-papers"
+
+# Combined filters
+curl "http://localhost:8000/api/search?query=attention&collection=research-papers&tags=nlp,transformers"
 ```
 
 #### Hybrid Search (Vector + Graph)
@@ -180,6 +208,58 @@ curl -X POST "http://localhost:8000/api/chat" \
   -d '{"message": "What does the document say about neural networks?", "num_context_chunks": 5}'
 ```
 
+### Collections
+
+```bash
+# List all collections
+curl "http://localhost:8000/api/collections"
+
+# Create a collection
+curl -X POST "http://localhost:8000/api/collections" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "research-papers"}'
+
+# Get collection stats
+curl "http://localhost:8000/api/collections/research-papers/stats"
+
+# Delete a collection
+curl -X DELETE "http://localhost:8000/api/collections/research-papers"
+```
+
+### Tags
+
+```bash
+# List all tags with document counts
+curl "http://localhost:8000/api/tags"
+
+# Get tags for a specific document
+curl "http://localhost:8000/api/tags/documents/{document_id}/tags"
+
+# Update document tags
+curl -X PUT "http://localhost:8000/api/tags/documents/{document_id}/tags" \
+  -H "Content-Type: application/json" \
+  -d '{"tags": ["machine-learning", "deep-learning", "nlp"]}'
+```
+
+### Entities & Knowledge Graph
+
+```bash
+# Search entities
+curl "http://localhost:8000/api/entities?query=Einstein&limit=10"
+
+# Get entity details with relationships
+curl "http://localhost:8000/api/entities/{entity_id}"
+
+# Get full knowledge graph
+curl "http://localhost:8000/api/graph/full"
+
+# Get graph filtered by collection
+curl "http://localhost:8000/api/graph/full?collection=research-papers"
+
+# Get entity neighborhood
+curl "http://localhost:8000/api/graph/entity/{entity_id}"
+```
+
 ### List Documents
 
 ```bash
@@ -188,28 +268,35 @@ curl "http://localhost:8000/api/ingest/documents"
 
 ## Roadmap
 
-### Phase 1: MVP (Current)
-- [x] Document ingestion (PDF, DOCX, TXT, MD)
+### Phase 1: MVP ✅
+- [x] Document ingestion (PDF, DOCX, TXT, MD, HTML)
 - [x] Text chunking and embedding
 - [x] Vector storage in Qdrant
 - [x] Semantic search API
 - [x] Basic RAG chat endpoint
 - [x] React TypeScript web UI with upload and search
 
-### Phase 2: Knowledge Graph
+### Phase 2: Knowledge Graph ✅
 - [x] Entity extraction (spaCy or LLM)
 - [x] Kuzu graph integration
 - [x] Relationship extraction
 - [x] Hybrid retrieval (vector + graph)
-- [ ] Graph visualization
+- [x] Graph visualization with interactive UI
 
-### Phase 3: Advanced Features
-- [ ] Collections/Workspaces (separate knowledge bases)
-- [ ] Tags and filters
-- [ ] Full LLM integration (OpenAI/Anthropic)
-- [ ] Authentication
-- [ ] Shareable links
-- [ ] Export/import
+### Phase 3: Organization & Filtering ✅
+- [x] Collections/Workspaces (separate knowledge bases)
+- [x] Tags and tag-based filtering
+- [x] Full LLM integration (Anthropic Claude)
+- [x] Tag input and autocomplete UI
+- [x] Multi-select tag filtering
+
+### Phase 4: Collaboration & Export (Planned)
+- [ ] Authentication and user management
+- [ ] Shareable links for documents and searches
+- [ ] Export/import functionality
+- [ ] Multi-user collaboration
+- [ ] API key management
+- [ ] Advanced permissions
 
 ## Configuration
 

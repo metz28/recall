@@ -7,9 +7,10 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, field_validator
 import re
+import aiosqlite
+from qdrant_client import QdrantClient
 
-from database import get_db_connection
-from services.vector_store import get_qdrant_client
+from core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -95,32 +96,29 @@ async def list_tags(collection: Optional[str] = Query(None)):
         List of tags with counts
     """
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        async with aiosqlite.connect(settings.sqlite_path) as conn:
+            # Build query to extract and count tags
+            if collection:
+                query = """
+                    SELECT tag, COUNT(DISTINCT d.id) as count
+                    FROM documents d, json_each(d.tags) as tag
+                    WHERE d.collection = ?
+                    GROUP BY tag
+                    ORDER BY count DESC, tag ASC
+                """
+                cursor = await conn.execute(query, (collection,))
+            else:
+                query = """
+                    SELECT tag, COUNT(DISTINCT d.id) as count
+                    FROM documents d, json_each(d.tags) as tag
+                    GROUP BY tag
+                    ORDER BY count DESC, tag ASC
+                """
+                cursor = await conn.execute(query)
 
-        # Build query to extract and count tags
-        if collection:
-            query = """
-                SELECT tag, COUNT(DISTINCT d.id) as count
-                FROM documents d, json_each(d.tags) as tag
-                WHERE d.collection = ?
-                GROUP BY tag
-                ORDER BY count DESC, tag ASC
-            """
-            cursor.execute(query, (collection,))
-        else:
-            query = """
-                SELECT tag, COUNT(DISTINCT d.id) as count
-                FROM documents d, json_each(d.tags) as tag
-                GROUP BY tag
-                ORDER BY count DESC, tag ASC
-            """
-            cursor.execute(query)
+            results = await cursor.fetchall()
 
-        results = cursor.fetchall()
-        conn.close()
-
-        return [{"tag": row[0], "count": row[1]} for row in results]
+            return [{"tag": row[0], "count": row[1]} for row in results]
 
     except Exception as e:
         logger.error(f"Error listing tags: {e}")
@@ -139,18 +137,15 @@ async def get_document_tags(document_id: int):
         Document tags
     """
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        async with aiosqlite.connect(settings.sqlite_path) as conn:
+            cursor = await conn.execute("SELECT tags FROM documents WHERE id = ?", (document_id,))
+            result = await cursor.fetchone()
 
-        cursor.execute("SELECT tags FROM documents WHERE id = ?", (document_id,))
-        result = cursor.fetchone()
-        conn.close()
+            if not result:
+                raise HTTPException(status_code=404, detail="Document not found")
 
-        if not result:
-            raise HTTPException(status_code=404, detail="Document not found")
-
-        tags = json.loads(result[0]) if result[0] else []
-        return {"document_id": document_id, "tags": tags}
+            tags = json.loads(result[0]) if result[0] else []
+            return {"document_id": document_id, "tags": tags}
 
     except HTTPException:
         raise
@@ -172,40 +167,34 @@ async def update_document_tags(document_id: int, tag_update: TagUpdate):
         Updated tags
     """
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        async with aiosqlite.connect(settings.sqlite_path) as conn:
+            # Verify document exists
+            cursor = await conn.execute("SELECT id FROM documents WHERE id = ?", (document_id,))
+            if not await cursor.fetchone():
+                raise HTTPException(status_code=404, detail="Document not found")
 
-        # Verify document exists
-        cursor.execute("SELECT id FROM documents WHERE id = ?", (document_id,))
-        if not cursor.fetchone():
-            conn.close()
-            raise HTTPException(status_code=404, detail="Document not found")
-
-        # Update SQLite
-        tags_json = json.dumps(tag_update.tags)
-        cursor.execute(
-            "UPDATE documents SET tags = ? WHERE id = ?",
-            (tags_json, document_id)
-        )
-        conn.commit()
-        conn.close()
+            # Update SQLite
+            tags_json = json.dumps(tag_update.tags)
+            await conn.execute(
+                "UPDATE documents SET tags = ? WHERE id = ?",
+                (tags_json, document_id)
+            )
+            await conn.commit()
 
         # Update Qdrant payloads for all chunks of this document
         try:
-            client = get_qdrant_client()
-            from qdrant_client.models import Filter, FieldCondition, MatchValue, SetPayload
+            client = QdrantClient(host=settings.qdrant_host, port=settings.qdrant_port)
 
             # Get all chunk IDs for this document
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("SELECT id FROM chunks WHERE document_id = ?", (document_id,))
-            chunk_ids = [row[0] for row in cursor.fetchall()]
-            conn.close()
+            async with aiosqlite.connect(settings.sqlite_path) as conn:
+                cursor = await conn.execute("SELECT id FROM chunks WHERE document_id = ?", (document_id,))
+                rows = await cursor.fetchall()
+                chunk_ids = [row[0] for row in rows]
 
             # Update payload for each chunk
             if chunk_ids:
                 client.set_payload(
-                    collection_name="knowledge_base",
+                    collection_name="recall_chunks",
                     payload={"tags": tag_update.tags},
                     points=chunk_ids
                 )

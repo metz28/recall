@@ -22,6 +22,49 @@ A personal knowledge base with hybrid vector + graph retrieval. Drop in PDFs, do
 - **Embeddings**: sentence-transformers (local)
 - **Document Processing**: PyMuPDF, python-docx
 
+## Authentication
+
+Recall now supports multi-user authentication with JWT tokens. Each user has their own private documents and collections.
+
+### First-Time Setup
+
+1. **Generate a secure JWT secret key:**
+   ```bash
+   openssl rand -hex 32
+   ```
+
+2. **Configure environment variables:**
+   Create a `.env` file from the example:
+   ```bash
+   cp .env.example .env
+   ```
+
+   Edit `.env` and set:
+   ```env
+   JWT_SECRET_KEY=<your-generated-secret-key>
+   FRONTEND_URL=http://localhost:5173
+   ```
+
+3. **Install dependencies** (if not using Docker):
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+### Creating Your First User
+
+After starting the application, navigate to `http://localhost:5173/register` to create your account.
+
+- **Email**: Must be a valid email address
+- **Username**: Minimum 3 characters, alphanumeric
+- **Password**: Minimum 8 characters
+
+### Migrating Existing Data
+
+If you have existing documents before authentication was added:
+1. All existing documents are automatically assigned to a system user during migration
+2. The first real user you create can claim or re-upload these documents
+3. Or use admin tools to transfer document ownership (requires manual database access)
+
 ## Quick Start
 
 ### Option 1: Simple Local Setup (Recommended)

@@ -55,6 +55,10 @@ async def migrate_add_users():
         await db.execute("ALTER TABLE documents ADD COLUMN user_id TEXT")
         logger.info("Added user_id column to documents table")
 
+        # Create index on user_id
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_documents_user ON documents(user_id)")
+        logger.info("Created index on documents(user_id)")
+
         # Check if there are any existing documents without user_id
         cursor = await db.execute("SELECT COUNT(*) FROM documents WHERE user_id IS NULL")
         count = (await cursor.fetchone())[0]
@@ -196,6 +200,10 @@ async def init_sqlite():
             )
         """)
 
+        # Check if user_id column exists in documents (for migration support)
+        cursor = await db.execute("PRAGMA table_info(documents)")
+        doc_columns = {row[1] for row in await cursor.fetchall()}
+
         # Create indices for performance
         await db.execute("CREATE INDEX IF NOT EXISTS idx_entity_mentions_entity ON entity_mentions(entity_id)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_entity_mentions_chunk ON entity_mentions(chunk_id)")
@@ -206,7 +214,11 @@ async def init_sqlite():
         await db.execute("CREATE INDEX IF NOT EXISTS idx_relationships_target ON relationships(target_entity_id)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_relationships_type ON relationships(relationship_type)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_documents_collection ON documents(collection)")
-        await db.execute("CREATE INDEX IF NOT EXISTS idx_documents_user ON documents(user_id)")
+
+        # Only create user_id index if column exists
+        if 'user_id' in doc_columns:
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_documents_user ON documents(user_id)")
+
         await db.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)")
 

@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { Document, SearchResult, UploadResponse, GraphData, EntityDetail, Collection, CollectionStats, Tag } from '../types';
+import type { Document, SearchResult, UploadResponse, GraphData, EntityDetail, Collection, CollectionStats, Tag, AuthResponse, User, LoginRequest, RegisterRequest } from '../types';
 
 const API_BASE_URL = '/api';
 
@@ -9,6 +9,36 @@ const api = axios.create({
     'Content-Type': 'application/json',
   },
 });
+
+// Request interceptor to add JWT token
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('authToken');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
+// Response interceptor to handle 401 errors
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      // Clear token and redirect to login
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('user');
+      if (window.location.pathname !== '/login' && window.location.pathname !== '/register') {
+        window.location.href = '/login';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
 
 export const uploadDocument = async (file: File, collection?: string, tags?: string): Promise<UploadResponse> => {
   const formData = new FormData();
@@ -112,6 +142,30 @@ export const getDocumentTags = async (documentId: number): Promise<{ document_id
 export const updateDocumentTags = async (documentId: number, tags: string[]): Promise<{ status: string; document_id: number; tags: string[] }> => {
   const response = await api.put<{ status: string; document_id: number; tags: string[] }>(`/tags/documents/${documentId}/tags`, { tags });
   return response.data;
+};
+
+// Authentication API
+export const login = async (email: string, password: string): Promise<AuthResponse> => {
+  const response = await api.post<AuthResponse>('/auth/login', null, {
+    params: { email, password },
+  });
+  return response.data;
+};
+
+export const register = async (data: RegisterRequest): Promise<{ message: string; user: User }> => {
+  const response = await api.post<{ message: string; user: User }>('/auth/register', data);
+  return response.data;
+};
+
+export const getCurrentUser = async (): Promise<User> => {
+  const response = await api.get<User>('/auth/me');
+  return response.data;
+};
+
+export const logout = async (): Promise<void> => {
+  await api.post('/auth/logout');
+  localStorage.removeItem('authToken');
+  localStorage.removeItem('user');
 };
 
 export default api;

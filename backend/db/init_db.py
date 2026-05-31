@@ -28,12 +28,79 @@ async def migrate_collections():
             logger.info(f"Migrated {rows_updated} documents to 'default' collection")
 
 
+async def migrate_add_users():
+    """Migrate database to add users and user_id to documents"""
+    import uuid
+
+    async with aiosqlite.connect(settings.sqlite_path) as db:
+        # Check if users table exists
+        cursor = await db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='users'"
+        )
+        users_table_exists = await cursor.fetchone() is not None
+
+        if not users_table_exists:
+            logger.info("Users table doesn't exist yet, skipping user migration")
+            return
+
+        # Check if user_id column exists in documents
+        cursor = await db.execute("PRAGMA table_info(documents)")
+        existing_columns = {row[1] for row in await cursor.fetchall()}
+
+        if 'user_id' in existing_columns:
+            logger.info("user_id column already exists in documents table")
+            return
+
+        # Add user_id column to documents
+        await db.execute("ALTER TABLE documents ADD COLUMN user_id TEXT")
+        logger.info("Added user_id column to documents table")
+
+        # Check if there are any existing documents without user_id
+        cursor = await db.execute("SELECT COUNT(*) FROM documents WHERE user_id IS NULL")
+        count = (await cursor.fetchone())[0]
+
+        if count > 0:
+            # Create a system user for existing documents
+            system_user_id = str(uuid.uuid4())
+            from core.security import hash_password
+
+            await db.execute("""
+                INSERT INTO users (id, email, username, hashed_password, is_active)
+                VALUES (?, ?, ?, ?, ?)
+            """, (system_user_id, "system@recall.local", "system", hash_password("SYSTEM_NO_LOGIN"), 0))
+
+            # Assign all existing documents to system user
+            await db.execute("""
+                UPDATE documents
+                SET user_id = ?
+                WHERE user_id IS NULL
+            """, (system_user_id,))
+
+            await db.commit()
+            logger.info(f"Created system user and assigned {count} existing documents")
+        else:
+            await db.commit()
+            logger.info("No existing documents to migrate")
+
+
 async def init_sqlite():
     """Initialize SQLite database with schema"""
     db_path = Path(settings.sqlite_path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
     async with aiosqlite.connect(settings.sqlite_path) as db:
+        # Users table
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY,
+                email TEXT UNIQUE NOT NULL,
+                username TEXT UNIQUE NOT NULL,
+                hashed_password TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                is_active BOOLEAN DEFAULT 1
+            )
+        """)
+
         # Documents table
         await db.execute("""
             CREATE TABLE IF NOT EXISTS documents (
@@ -47,7 +114,9 @@ async def init_sqlite():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 collection TEXT,
-                tags TEXT  -- JSON array as string
+                tags TEXT,  -- JSON array as string
+                user_id TEXT,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             )
         """)
 
@@ -137,6 +206,9 @@ async def init_sqlite():
         await db.execute("CREATE INDEX IF NOT EXISTS idx_relationships_target ON relationships(target_entity_id)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_relationships_type ON relationships(relationship_type)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_documents_collection ON documents(collection)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_documents_user ON documents(user_id)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)")
 
         await db.commit()
         logger.info("SQLite initialized")
@@ -208,5 +280,6 @@ async def init_databases():
     """Initialize all databases"""
     await init_sqlite()
     await migrate_collections()
+    await migrate_add_users()
     await init_qdrant()
     await init_kuzu()

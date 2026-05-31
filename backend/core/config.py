@@ -28,6 +28,14 @@ class Settings(BaseSettings):
     # Notion Configuration (optional)
     notion_api_key: str | None = None
 
+    # JWT Authentication Configuration
+    jwt_secret_key: str = "CHANGE_ME_IN_PRODUCTION_USE_OPENSSL_RAND_HEX_32"
+    jwt_algorithm: str = "HS256"
+    jwt_access_token_expire_days: int = 7
+
+    # CORS Configuration
+    frontend_url: str = "http://localhost:5173"
+
     # Chunking Configuration
     chunk_size: int = 512
     chunk_overlap: int = 50

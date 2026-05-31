@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 
 from core.config import settings
 from core.logging_config import setup_logging, get_logger
-from api import ingest, search, chat, entities, hybrid_search, graph, notion, collections, tags
+from api import ingest, search, chat, entities, hybrid_search, graph, notion, collections, tags, auth
 from db.init_db import init_databases
 
 # Initialize logging
@@ -54,13 +54,14 @@ app = FastAPI(
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure this properly for production
+    allow_origins=[settings.frontend_url],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # Include routers
+app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(ingest.router, prefix="/api/ingest", tags=["ingest"])
 app.include_router(search.router, prefix="/api/search", tags=["search"])
 app.include_router(hybrid_search.router, prefix="/api/search/hybrid", tags=["search"])

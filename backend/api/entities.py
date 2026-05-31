@@ -1,12 +1,14 @@
 """
 Entity API endpoints
 """
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from typing import Optional
 import aiosqlite
 import json
 
 from core.config import settings
+from core.dependencies import get_current_user
+from models.user import User
 
 router = APIRouter()
 
@@ -17,10 +19,11 @@ async def list_entities(
     min_mentions: Optional[int] = Query(None, description="Minimum number of mentions"),
     limit: int = Query(100, ge=1, le=1000, description="Maximum number of entities to return"),
     offset: int = Query(0, ge=0, description="Number of entities to skip"),
-    collection: Optional[str] = Query(None, description="Filter by collection")
+    collection: Optional[str] = Query(None, description="Filter by collection"),
+    current_user: User = Depends(get_current_user)
 ):
     """
-    List entities with optional filters and pagination
+    List entities from current user's documents with optional filters and pagination
 
     Returns:
         List of entities with their metadata
@@ -28,19 +31,25 @@ async def list_entities(
     async with aiosqlite.connect(settings.sqlite_path) as db:
         db.row_factory = aiosqlite.Row
 
-        # Build query with filters
+        # Build query with filters - ALWAYS filter by user_id
         if collection:
-            # Filter entities by collection - join through documents
+            # Filter entities by collection AND user - join through documents
             query = """SELECT DISTINCT e.*
                        FROM entities e
                        JOIN entity_mentions em ON e.id = em.entity_id
                        JOIN chunks c ON em.chunk_id = c.id
                        JOIN documents d ON c.document_id = d.id
-                       WHERE d.collection = ?"""
-            params = [collection]
+                       WHERE d.collection = ? AND d.user_id = ?"""
+            params = [collection, current_user.id]
         else:
-            query = "SELECT * FROM entities WHERE 1=1"
-            params = []
+            # Filter entities from user's documents only
+            query = """SELECT DISTINCT e.*
+                       FROM entities e
+                       JOIN entity_mentions em ON e.id = em.entity_id
+                       JOIN chunks c ON em.chunk_id = c.id
+                       JOIN documents d ON c.document_id = d.id
+                       WHERE d.user_id = ?"""
+            params = [current_user.id]
 
         if entity_type:
             query += " AND e.entity_type = ?" if collection else " AND entity_type = ?"
@@ -74,11 +83,16 @@ async def list_entities(
                                  JOIN entity_mentions em ON e.id = em.entity_id
                                  JOIN chunks c ON em.chunk_id = c.id
                                  JOIN documents d ON c.document_id = d.id
-                                 WHERE d.collection = ?"""
-                count_params = [collection]
+                                 WHERE d.collection = ? AND d.user_id = ?"""
+                count_params = [collection, current_user.id]
             else:
-                count_query = "SELECT COUNT(*) FROM entities WHERE 1=1"
-                count_params = []
+                count_query = """SELECT COUNT(DISTINCT e.id)
+                                 FROM entities e
+                                 JOIN entity_mentions em ON e.id = em.entity_id
+                                 JOIN chunks c ON em.chunk_id = c.id
+                                 JOIN documents d ON c.document_id = d.id
+                                 WHERE d.user_id = ?"""
+                count_params = [current_user.id]
 
             if entity_type:
                 count_query += " AND e.entity_type = ?" if collection else " AND entity_type = ?"
@@ -100,9 +114,12 @@ async def list_entities(
 
 
 @router.get("/{entity_id}")
-async def get_entity(entity_id: str):
+async def get_entity(
+    entity_id: str,
+    current_user: User = Depends(get_current_user)
+):
     """
-    Get details for a specific entity
+    Get details for a specific entity (only from user's documents)
 
     Args:
         entity_id: ID of the entity
@@ -113,9 +130,15 @@ async def get_entity(entity_id: str):
     async with aiosqlite.connect(settings.sqlite_path) as db:
         db.row_factory = aiosqlite.Row
 
-        # Get entity
+        # Get entity and verify it belongs to user's documents
         async with db.execute(
-            "SELECT * FROM entities WHERE id = ?", (entity_id,)
+            """SELECT DISTINCT e.*
+               FROM entities e
+               JOIN entity_mentions em ON e.id = em.entity_id
+               JOIN chunks c ON em.chunk_id = c.id
+               JOIN documents d ON c.document_id = d.id
+               WHERE e.id = ? AND d.user_id = ?""",
+            (entity_id, current_user.id)
         ) as cursor:
             row = await cursor.fetchone()
 
@@ -131,16 +154,16 @@ async def get_entity(entity_id: str):
                 except:
                     entity['variants'] = []
 
-            # Get mention details
+            # Get mention details (only from user's documents)
             async with db.execute(
                 """SELECT em.id, em.context, em.position, c.id as chunk_id,
                           c.chunk_index, c.document_id, d.title as document_title
                    FROM entity_mentions em
                    JOIN chunks c ON em.chunk_id = c.id
                    JOIN documents d ON c.document_id = d.id
-                   WHERE em.entity_id = ?
+                   WHERE em.entity_id = ? AND d.user_id = ?
                    ORDER BY d.title, c.chunk_index""",
-                (entity_id,)
+                (entity_id, current_user.id)
             ) as mention_cursor:
                 mentions = [dict(m) for m in await mention_cursor.fetchall()]
 
@@ -153,7 +176,8 @@ async def get_entity(entity_id: str):
 async def get_entity_chunks(
     entity_id: str,
     limit: int = Query(50, ge=1, le=500),
-    offset: int = Query(0, ge=0)
+    offset: int = Query(0, ge=0),
+    current_user: User = Depends(get_current_user)
 ):
     """
     Get chunks that mention a specific entity
@@ -169,32 +193,42 @@ async def get_entity_chunks(
     async with aiosqlite.connect(settings.sqlite_path) as db:
         db.row_factory = aiosqlite.Row
 
-        # Verify entity exists
+        # Verify entity exists in user's documents
         async with db.execute(
-            "SELECT name, entity_type FROM entities WHERE id = ?", (entity_id,)
+            """SELECT DISTINCT e.name, e.entity_type
+               FROM entities e
+               JOIN entity_mentions em ON e.id = em.entity_id
+               JOIN chunks c ON em.chunk_id = c.id
+               JOIN documents d ON c.document_id = d.id
+               WHERE e.id = ? AND d.user_id = ?""",
+            (entity_id, current_user.id)
         ) as cursor:
             entity_row = await cursor.fetchone()
             if not entity_row:
                 raise HTTPException(status_code=404, detail="Entity not found")
 
-        # Get chunks
+        # Get chunks (only from user's documents)
         async with db.execute(
             """SELECT c.*, em.context, em.position,
                       d.title as document_title, d.id as document_id
                FROM entity_mentions em
                JOIN chunks c ON em.chunk_id = c.id
                JOIN documents d ON c.document_id = d.id
-               WHERE em.entity_id = ?
+               WHERE em.entity_id = ? AND d.user_id = ?
                ORDER BY d.title, c.chunk_index
                LIMIT ? OFFSET ?""",
-            (entity_id, limit, offset)
+            (entity_id, current_user.id, limit, offset)
         ) as cursor:
             chunks = [dict(row) for row in await cursor.fetchall()]
 
-        # Get total count
+        # Get total count (only from user's documents)
         async with db.execute(
-            "SELECT COUNT(*) FROM entity_mentions WHERE entity_id = ?",
-            (entity_id,)
+            """SELECT COUNT(*)
+               FROM entity_mentions em
+               JOIN chunks c ON em.chunk_id = c.id
+               JOIN documents d ON c.document_id = d.id
+               WHERE em.entity_id = ? AND d.user_id = ?""",
+            (entity_id, current_user.id)
         ) as cursor:
             total = (await cursor.fetchone())[0]
 
@@ -213,10 +247,11 @@ async def get_entity_chunks(
 
 @router.get("/types/summary")
 async def get_entity_types_summary(
-    collection: Optional[str] = Query(None, description="Filter by collection")
+    collection: Optional[str] = Query(None, description="Filter by collection"),
+    current_user: User = Depends(get_current_user)
 ):
     """
-    Get summary of entity types and their counts
+    Get summary of entity types and their counts for current user's documents
 
     Returns:
         Dictionary of entity types with counts
@@ -230,16 +265,20 @@ async def get_entity_types_summary(
                        JOIN entity_mentions em ON e.id = em.entity_id
                        JOIN chunks c ON em.chunk_id = c.id
                        JOIN documents d ON c.document_id = d.id
-                       WHERE d.collection = ?
+                       WHERE d.collection = ? AND d.user_id = ?
                        GROUP BY e.entity_type
                        ORDER BY count DESC"""
-            params = (collection,)
+            params = (collection, current_user.id)
         else:
-            query = """SELECT entity_type, COUNT(*) as count, SUM(mention_count) as total_mentions
-                       FROM entities
-                       GROUP BY entity_type
+            query = """SELECT e.entity_type, COUNT(DISTINCT e.id) as count, SUM(e.mention_count) as total_mentions
+                       FROM entities e
+                       JOIN entity_mentions em ON e.id = em.entity_id
+                       JOIN chunks c ON em.chunk_id = c.id
+                       JOIN documents d ON c.document_id = d.id
+                       WHERE d.user_id = ?
+                       GROUP BY e.entity_type
                        ORDER BY count DESC"""
-            params = ()
+            params = (current_user.id,)
 
         async with db.execute(query, params) as cursor:
             rows = await cursor.fetchall()
@@ -253,7 +292,8 @@ async def get_entity_types_summary(
 async def get_entity_relationships(
     entity_id: str,
     limit: int = Query(50, ge=1, le=500),
-    offset: int = Query(0, ge=0)
+    offset: int = Query(0, ge=0),
+    current_user: User = Depends(get_current_user)
 ):
     """
     Get relationships for a specific entity
@@ -269,33 +309,45 @@ async def get_entity_relationships(
     async with aiosqlite.connect(settings.sqlite_path) as db:
         db.row_factory = aiosqlite.Row
 
-        # Verify entity exists
+        # Verify entity exists in user's documents
         async with db.execute(
-            "SELECT name, entity_type FROM entities WHERE id = ?", (entity_id,)
+            """SELECT DISTINCT e.name, e.entity_type
+               FROM entities e
+               JOIN entity_mentions em ON e.id = em.entity_id
+               JOIN chunks c ON em.chunk_id = c.id
+               JOIN documents d ON c.document_id = d.id
+               WHERE e.id = ? AND d.user_id = ?""",
+            (entity_id, current_user.id)
         ) as cursor:
             entity_row = await cursor.fetchone()
             if not entity_row:
                 raise HTTPException(status_code=404, detail="Entity not found")
 
-        # Get relationships where entity is source or target
+        # Get relationships where entity is source or target (only from user's documents)
         async with db.execute(
-            """SELECT r.*,
+            """SELECT DISTINCT r.*,
                       e1.name as source_name, e1.entity_type as source_type,
                       e2.name as target_name, e2.entity_type as target_type
                FROM relationships r
                JOIN entities e1 ON r.source_entity_id = e1.id
                JOIN entities e2 ON r.target_entity_id = e2.id
-               WHERE r.source_entity_id = ? OR r.target_entity_id = ?
+               JOIN chunks c ON r.chunk_id = c.id
+               JOIN documents d ON c.document_id = d.id
+               WHERE (r.source_entity_id = ? OR r.target_entity_id = ?) AND d.user_id = ?
                ORDER BY r.created_at DESC
                LIMIT ? OFFSET ?""",
-            (entity_id, entity_id, limit, offset)
+            (entity_id, entity_id, current_user.id, limit, offset)
         ) as cursor:
             relationships = [dict(row) for row in await cursor.fetchall()]
 
-        # Get total count
+        # Get total count (only from user's documents)
         async with db.execute(
-            "SELECT COUNT(*) FROM relationships WHERE source_entity_id = ? OR target_entity_id = ?",
-            (entity_id, entity_id)
+            """SELECT COUNT(DISTINCT r.id)
+               FROM relationships r
+               JOIN chunks c ON r.chunk_id = c.id
+               JOIN documents d ON c.document_id = d.id
+               WHERE (r.source_entity_id = ? OR r.target_entity_id = ?) AND d.user_id = ?""",
+            (entity_id, entity_id, current_user.id)
         ) as cursor:
             total = (await cursor.fetchone())[0]
 
@@ -317,10 +369,11 @@ async def list_all_relationships(
     relationship_type: Optional[str] = Query(None, description="Filter by relationship type"),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
-    collection: Optional[str] = Query(None, description="Filter by collection")
+    collection: Optional[str] = Query(None, description="Filter by collection"),
+    current_user: User = Depends(get_current_user)
 ):
     """
-    List all relationships with optional filters
+    List all relationships from current user's documents with optional filters
 
     Args:
         relationship_type: Filter by relationship type (e.g., "works_for", "located_in")
@@ -333,7 +386,7 @@ async def list_all_relationships(
     async with aiosqlite.connect(settings.sqlite_path) as db:
         db.row_factory = aiosqlite.Row
 
-        # Build query
+        # Build query - ALWAYS filter by user_id
         if collection:
             query = """SELECT DISTINCT r.*,
                               e1.name as source_name, e1.entity_type as source_type,
@@ -343,17 +396,19 @@ async def list_all_relationships(
                        JOIN entities e2 ON r.target_entity_id = e2.id
                        JOIN chunks c ON r.chunk_id = c.id
                        JOIN documents d ON c.document_id = d.id
-                       WHERE d.collection = ?"""
-            params = [collection]
+                       WHERE d.collection = ? AND d.user_id = ?"""
+            params = [collection, current_user.id]
         else:
-            query = """SELECT r.*,
+            query = """SELECT DISTINCT r.*,
                               e1.name as source_name, e1.entity_type as source_type,
                               e2.name as target_name, e2.entity_type as target_type
                        FROM relationships r
                        JOIN entities e1 ON r.source_entity_id = e1.id
                        JOIN entities e2 ON r.target_entity_id = e2.id
-                       WHERE 1=1"""
-            params = []
+                       JOIN chunks c ON r.chunk_id = c.id
+                       JOIN documents d ON c.document_id = d.id
+                       WHERE d.user_id = ?"""
+            params = [current_user.id]
 
         if relationship_type:
             query += " AND r.relationship_type = ?"
@@ -371,11 +426,15 @@ async def list_all_relationships(
                              FROM relationships r
                              JOIN chunks c ON r.chunk_id = c.id
                              JOIN documents d ON c.document_id = d.id
-                             WHERE d.collection = ?"""
-            count_params = [collection]
+                             WHERE d.collection = ? AND d.user_id = ?"""
+            count_params = [collection, current_user.id]
         else:
-            count_query = "SELECT COUNT(*) FROM relationships WHERE 1=1"
-            count_params = []
+            count_query = """SELECT COUNT(DISTINCT r.id)
+                             FROM relationships r
+                             JOIN chunks c ON r.chunk_id = c.id
+                             JOIN documents d ON c.document_id = d.id
+                             WHERE d.user_id = ?"""
+            count_params = [current_user.id]
 
         if relationship_type:
             count_query += " AND " + ("r." if collection else "") + "relationship_type = ?"
@@ -394,10 +453,11 @@ async def list_all_relationships(
 
 @router.get("/relationships/types/summary")
 async def get_relationship_types_summary(
-    collection: Optional[str] = Query(None, description="Filter by collection")
+    collection: Optional[str] = Query(None, description="Filter by collection"),
+    current_user: User = Depends(get_current_user)
 ):
     """
-    Get summary of relationship types and their counts
+    Get summary of relationship types and their counts for current user's documents
 
     Returns:
         Dictionary of relationship types with counts
@@ -410,16 +470,19 @@ async def get_relationship_types_summary(
                        FROM relationships r
                        JOIN chunks c ON r.chunk_id = c.id
                        JOIN documents d ON c.document_id = d.id
-                       WHERE d.collection = ?
+                       WHERE d.collection = ? AND d.user_id = ?
                        GROUP BY r.relationship_type
                        ORDER BY count DESC"""
-            params = (collection,)
+            params = (collection, current_user.id)
         else:
-            query = """SELECT relationship_type, COUNT(*) as count
-                       FROM relationships
-                       GROUP BY relationship_type
+            query = """SELECT r.relationship_type, COUNT(DISTINCT r.id) as count
+                       FROM relationships r
+                       JOIN chunks c ON r.chunk_id = c.id
+                       JOIN documents d ON c.document_id = d.id
+                       WHERE d.user_id = ?
+                       GROUP BY r.relationship_type
                        ORDER BY count DESC"""
-            params = ()
+            params = (current_user.id,)
 
         async with db.execute(query, params) as cursor:
             rows = await cursor.fetchall()

@@ -1,12 +1,15 @@
 """
 Search API endpoints
 """
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Depends
 from qdrant_client import QdrantClient
 from qdrant_client.models import Filter, FieldCondition, MatchValue, MatchAny
 from typing import Optional
+import aiosqlite
 
 from core.config import settings
+from core.dependencies import get_current_user
+from models.user import User
 from services.embedding import embed_text
 
 router = APIRouter()
@@ -17,18 +20,37 @@ async def search(
     query: str = Query(..., description="Search query"),
     limit: int = Query(10, ge=1, le=50, description="Number of results"),
     collection: Optional[str] = Query(None, description="Filter by collection"),
-    tags: Optional[str] = Query(None, description="Comma-separated tags (OR logic)")
+    tags: Optional[str] = Query(None, description="Comma-separated tags (OR logic)"),
+    current_user: User = Depends(get_current_user)
 ):
     """
-    Semantic search across all documents
+    Semantic search across the current user's documents
 
     Returns the most relevant chunks based on vector similarity
     """
+    # Get user's document IDs
+    async with aiosqlite.connect(settings.sqlite_path) as db:
+        async with db.execute(
+            "SELECT id FROM documents WHERE user_id = ?",
+            (current_user.id,)
+        ) as cursor:
+            user_doc_ids = [row[0] for row in await cursor.fetchall()]
+
+    # If user has no documents, return empty results
+    if not user_doc_ids:
+        return []
+
     # Generate query embedding
     query_embedding = embed_text(query)
 
-    # Build query filter for collection and tags
-    filter_conditions = []
+    # Build query filter for user's documents, collection, and tags
+    filter_conditions = [
+        # CRITICAL: Filter by user's documents only
+        FieldCondition(
+            key="document_id",
+            match=MatchAny(any=user_doc_ids)
+        )
+    ]
 
     if collection:
         filter_conditions.append(
@@ -50,9 +72,7 @@ async def search(
             )
 
     # Combine filters with AND logic
-    query_filter = None
-    if filter_conditions:
-        query_filter = Filter(must=filter_conditions)
+    query_filter = Filter(must=filter_conditions)
 
     # Search in Qdrant
     qdrant = QdrantClient(host=settings.qdrant_host, port=settings.qdrant_port)

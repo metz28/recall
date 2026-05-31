@@ -3,13 +3,15 @@ Collections API endpoints
 """
 import re
 import aiosqlite
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 from datetime import datetime
 
 from core.config import settings
 from core.logging_config import get_logger
+from core.dependencies import get_current_user
+from models.user import User
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -53,8 +55,8 @@ class CollectionStats(BaseModel):
 
 
 @router.get("", response_model=list[Collection])
-async def list_collections():
-    """List all collections with document counts"""
+async def list_collections(current_user: User = Depends(get_current_user)):
+    """List all collections for the current user with document counts"""
     async with aiosqlite.connect(settings.sqlite_path) as db:
         cursor = await db.execute("""
             SELECT
@@ -63,10 +65,10 @@ async def list_collections():
                 COUNT(c.id) as total_chunks
             FROM documents d
             LEFT JOIN chunks c ON d.id = c.document_id
-            WHERE d.collection IS NOT NULL
+            WHERE d.collection IS NOT NULL AND d.user_id = ?
             GROUP BY d.collection
             ORDER BY d.collection
-        """)
+        """, (current_user.id,))
 
         rows = await cursor.fetchall()
         collections = [
@@ -86,8 +88,11 @@ async def list_collections():
 
 
 @router.post("", response_model=Collection, status_code=201)
-async def create_collection(collection: CollectionCreate):
-    """Create or verify a collection exists"""
+async def create_collection(
+    collection: CollectionCreate,
+    current_user: User = Depends(get_current_user)
+):
+    """Create or verify a collection exists for the current user"""
     # Collections are created implicitly when documents are uploaded
     # This endpoint validates the name and returns the collection info
     async with aiosqlite.connect(settings.sqlite_path) as db:
@@ -97,8 +102,8 @@ async def create_collection(collection: CollectionCreate):
                 COUNT(c.id) as total_chunks
             FROM documents d
             LEFT JOIN chunks c ON d.id = c.document_id
-            WHERE d.collection = ?
-        """, (collection.name,))
+            WHERE d.collection = ? AND d.user_id = ?
+        """, (collection.name, current_user.id))
 
         row = await cursor.fetchone()
 
@@ -110,8 +115,11 @@ async def create_collection(collection: CollectionCreate):
 
 
 @router.delete("/{name}", status_code=204)
-async def delete_collection(name: str):
-    """Delete a collection and all its documents"""
+async def delete_collection(
+    name: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Delete a collection and all its documents for the current user"""
     # Prevent deletion of default collection
     if name == "default":
         raise HTTPException(
@@ -120,10 +128,10 @@ async def delete_collection(name: str):
         )
 
     async with aiosqlite.connect(settings.sqlite_path) as db:
-        # Check if collection exists
+        # Check if collection exists for this user
         cursor = await db.execute(
-            "SELECT COUNT(*) FROM documents WHERE collection = ?",
-            (name,)
+            "SELECT COUNT(*) FROM documents WHERE collection = ? AND user_id = ?",
+            (name, current_user.id)
         )
         count = (await cursor.fetchone())[0]
 
@@ -133,19 +141,22 @@ async def delete_collection(name: str):
                 detail=f"Collection '{name}' not found"
             )
 
-        # Delete all documents in the collection (cascade will handle chunks, entities, etc.)
+        # Delete all documents in the collection for this user (cascade will handle chunks, entities, etc.)
         await db.execute(
-            "DELETE FROM documents WHERE collection = ?",
-            (name,)
+            "DELETE FROM documents WHERE collection = ? AND user_id = ?",
+            (name, current_user.id)
         )
         await db.commit()
 
-        logger.info(f"Deleted collection '{name}' with {count} documents")
+        logger.info(f"User {current_user.username} deleted collection '{name}' with {count} documents")
 
 
 @router.get("/{name}/stats", response_model=CollectionStats)
-async def get_collection_stats(name: str):
-    """Get detailed statistics for a collection"""
+async def get_collection_stats(
+    name: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Get detailed statistics for a collection for the current user"""
     async with aiosqlite.connect(settings.sqlite_path) as db:
         # Get document and chunk counts
         cursor = await db.execute("""
@@ -156,8 +167,8 @@ async def get_collection_stats(name: str):
                 MAX(d.updated_at) as updated_at
             FROM documents d
             LEFT JOIN chunks c ON d.id = c.document_id
-            WHERE d.collection = ?
-        """, (name,))
+            WHERE d.collection = ? AND d.user_id = ?
+        """, (name, current_user.id))
 
         row = await cursor.fetchone()
 
@@ -187,8 +198,8 @@ async def get_collection_stats(name: str):
             JOIN entity_mentions em ON e.id = em.entity_id
             JOIN chunks c ON em.chunk_id = c.id
             JOIN documents d ON c.document_id = d.id
-            WHERE d.collection = ?
-        """, (name,))
+            WHERE d.collection = ? AND d.user_id = ?
+        """, (name, current_user.id))
 
         entity_count = (await cursor.fetchone())[0]
 

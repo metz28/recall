@@ -1,7 +1,7 @@
 """
 Document ingestion API endpoints
 """
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Query
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Query, Depends
 from pathlib import Path
 import aiosqlite
 from uuid import uuid4
@@ -11,6 +11,8 @@ from typing import Optional
 
 from core.config import settings
 from core.logging_config import get_logger
+from core.dependencies import get_current_user
+from models.user import User
 from services.document_loader import load_document
 from services.chunking import chunk_text
 from services.embedding import embed_texts
@@ -85,7 +87,8 @@ def validate_collection_name(collection: str) -> str:
 async def upload_document(
     file: UploadFile = File(...),
     collection: str = Form("default"),
-    tags: str = Form("")
+    tags: str = Form(""),
+    current_user: User = Depends(get_current_user)
 ):
     """
     Upload and process a document
@@ -181,8 +184,8 @@ async def upload_document(
         async with aiosqlite.connect(settings.sqlite_path) as db:
             await db.execute(
                 """INSERT INTO documents
-                   (id, title, source_type, source_path, file_type, file_size, num_chunks, collection, tags)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   (id, title, source_type, source_path, file_type, file_size, num_chunks, collection, tags, user_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     doc_id,
                     doc_metadata.title,
@@ -192,7 +195,8 @@ async def upload_document(
                     doc_metadata.file_size,
                     doc_metadata.num_chunks,
                     doc_metadata.collection,
-                    json.dumps(parsed_tags)
+                    json.dumps(parsed_tags),
+                    current_user.id
                 )
             )
 
@@ -412,17 +416,20 @@ async def upload_document(
 
 
 @router.get("/documents")
-async def list_documents(collection: Optional[str] = Query(None)):
-    """List all ingested documents, optionally filtered by collection"""
+async def list_documents(
+    collection: Optional[str] = Query(None),
+    current_user: User = Depends(get_current_user)
+):
+    """List all ingested documents for the current user, optionally filtered by collection"""
     async with aiosqlite.connect(settings.sqlite_path) as db:
         db.row_factory = aiosqlite.Row
 
         if collection:
-            query = "SELECT * FROM documents WHERE collection = ? ORDER BY created_at DESC"
-            params = (collection,)
+            query = "SELECT * FROM documents WHERE user_id = ? AND collection = ? ORDER BY created_at DESC"
+            params = (current_user.id, collection)
         else:
-            query = "SELECT * FROM documents ORDER BY created_at DESC"
-            params = ()
+            query = "SELECT * FROM documents WHERE user_id = ? ORDER BY created_at DESC"
+            params = (current_user.id,)
 
         async with db.execute(query, params) as cursor:
             rows = await cursor.fetchall()
@@ -430,10 +437,23 @@ async def list_documents(collection: Optional[str] = Query(None)):
 
 
 @router.delete("/documents/{document_id}")
-async def delete_document(document_id: str):
-    """Delete a document and all its chunks"""
+async def delete_document(
+    document_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Delete a document and all its chunks (only if owned by current user)"""
     # Delete from SQLite
     async with aiosqlite.connect(settings.sqlite_path) as db:
+        # Verify ownership
+        async with db.execute(
+            "SELECT user_id FROM documents WHERE id = ?", (document_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            if row is None:
+                raise HTTPException(status_code=404, detail="Document not found")
+            if row[0] != current_user.id:
+                raise HTTPException(status_code=403, detail="Not authorized to delete this document")
+
         # Get chunk IDs first
         async with db.execute(
             "SELECT id FROM chunks WHERE document_id = ?", (document_id,)

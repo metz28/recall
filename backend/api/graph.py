@@ -2,10 +2,12 @@
 Graph API endpoints for visualization
 """
 import aiosqlite
-from fastapi import APIRouter, Query, HTTPException
+from fastapi import APIRouter, Query, HTTPException, Depends
 from typing import Optional
 
 from core.config import settings
+from core.dependencies import get_current_user
+from models.user import User
 
 router = APIRouter()
 
@@ -16,7 +18,8 @@ async def get_full_graph(
     entity_type: Optional[str] = Query(None, description="Filter by entity type (e.g., PERSON, ORG, GPE)"),
     min_mentions: int = Query(1, ge=1, description="Minimum number of mentions required"),
     collection: Optional[str] = Query(None, description="Filter by collection"),
-    tags: Optional[str] = Query(None, description="Comma-separated tags (OR logic)")
+    tags: Optional[str] = Query(None, description="Comma-separated tags (OR logic)"),
+    current_user: User = Depends(get_current_user)
 ):
     """
     Get the full knowledge graph with nodes (entities) and edges (relationships)
@@ -30,47 +33,41 @@ async def get_full_graph(
         db.row_factory = aiosqlite.Row
 
         # Build query for entities with collection and tags filtering
+        # ALWAYS filter by user_id through documents
         filters = []
         params = []
 
-        if collection or tags:
-            entity_query = """
-                SELECT DISTINCT e.id, e.name, e.entity_type, e.description, e.mention_count, e.variants
-                FROM entities e
-                JOIN entity_mentions em ON e.id = em.entity_id
-                JOIN chunks c ON em.chunk_id = c.id
-                JOIN documents d ON c.document_id = d.id
-                WHERE e.mention_count >= ?
-            """
-            params = [min_mentions]
+        # Always join with documents to filter by user
+        entity_query = """
+            SELECT DISTINCT e.id, e.name, e.entity_type, e.description, e.mention_count, e.variants
+            FROM entities e
+            JOIN entity_mentions em ON e.id = em.entity_id
+            JOIN chunks c ON em.chunk_id = c.id
+            JOIN documents d ON c.document_id = d.id
+            WHERE e.mention_count >= ? AND d.user_id = ?
+        """
+        params = [min_mentions, current_user.id]
 
-            if collection:
-                filters.append("d.collection = ?")
-                params.append(collection)
+        if collection:
+            filters.append("d.collection = ?")
+            params.append(collection)
 
-            if tags:
-                # Parse tags and build OR filter using json_each
-                tag_list = [tag.strip() for tag in tags.split(',') if tag.strip()]
-                if tag_list:
-                    tag_placeholders = ','.join('?' * len(tag_list))
-                    filters.append(f"EXISTS (SELECT 1 FROM json_each(d.tags) WHERE value IN ({tag_placeholders}))")
-                    params.extend(tag_list)
+        if tags:
+            # Parse tags and build OR filter using json_each
+            tag_list = [tag.strip() for tag in tags.split(',') if tag.strip()]
+            if tag_list:
+                tag_placeholders = ','.join('?' * len(tag_list))
+                filters.append(f"EXISTS (SELECT 1 FROM json_each(d.tags) WHERE value IN ({tag_placeholders}))")
+                params.extend(tag_list)
 
-            if filters:
-                entity_query += " AND " + " AND ".join(filters)
-        else:
-            entity_query = """
-                SELECT id, name, entity_type, description, mention_count, variants
-                FROM entities
-                WHERE mention_count >= ?
-            """
-            params = [min_mentions]
+        if filters:
+            entity_query += " AND " + " AND ".join(filters)
 
         if entity_type:
-            entity_query += " AND " + ("e." if (collection or tags) else "") + "entity_type = ?"
+            entity_query += " AND e.entity_type = ?"
             params.append(entity_type)
 
-        entity_query += " ORDER BY " + ("e." if (collection or tags) else "") + "mention_count DESC LIMIT ?"
+        entity_query += " ORDER BY e.mention_count DESC LIMIT ?"
         params.append(limit)
 
         # Fetch entities
@@ -110,46 +107,37 @@ async def get_full_graph(
                 "variants": entity["variants"]
             })
 
-        # Fetch relationships between these entities
+        # Fetch relationships between these entities (filtered by user)
         if len(entity_ids) > 0:
             # Create placeholders for SQL IN clause
             placeholders = ','.join('?' * len(entity_ids))
 
-            if collection or tags:
-                relationship_query = f"""
-                    SELECT DISTINCT r.id, r.source_entity_id, r.target_entity_id, r.relationship_type, r.context, r.confidence
-                    FROM relationships r
-                    JOIN chunks c ON r.chunk_id = c.id
-                    JOIN documents d ON c.document_id = d.id
-                    WHERE r.source_entity_id IN ({placeholders})
-                      AND r.target_entity_id IN ({placeholders})
-                """
-                rel_params = list(entity_ids) + list(entity_ids)
+            # ALWAYS join with documents to filter by user_id
+            relationship_query = f"""
+                SELECT DISTINCT r.id, r.source_entity_id, r.target_entity_id, r.relationship_type, r.context, r.confidence
+                FROM relationships r
+                JOIN chunks c ON r.chunk_id = c.id
+                JOIN documents d ON c.document_id = d.id
+                WHERE r.source_entity_id IN ({placeholders})
+                  AND r.target_entity_id IN ({placeholders})
+                  AND d.user_id = ?
+            """
+            rel_params = list(entity_ids) + list(entity_ids) + [current_user.id]
 
-                # Add filters
-                rel_filters = []
-                if collection:
-                    rel_filters.append("d.collection = ?")
-                    rel_params.insert(0, collection)
-                if tags:
-                    tag_list = [tag.strip() for tag in tags.split(',') if tag.strip()]
-                    if tag_list:
-                        tag_placeholders_rel = ','.join('?' * len(tag_list))
-                        rel_filters.append(f"EXISTS (SELECT 1 FROM json_each(d.tags) WHERE value IN ({tag_placeholders_rel}))")
-                        rel_params[0:0] = tag_list if not collection else []
-                        if collection:
-                            rel_params[1:1] = tag_list
+            # Add filters
+            rel_filters = []
+            if collection:
+                rel_filters.append("d.collection = ?")
+                rel_params.append(collection)
+            if tags:
+                tag_list = [tag.strip() for tag in tags.split(',') if tag.strip()]
+                if tag_list:
+                    tag_placeholders_rel = ','.join('?' * len(tag_list))
+                    rel_filters.append(f"EXISTS (SELECT 1 FROM json_each(d.tags) WHERE value IN ({tag_placeholders_rel}))")
+                    rel_params.extend(tag_list)
 
-                if rel_filters:
-                    relationship_query = relationship_query.replace("WHERE", f"WHERE {' AND '.join(rel_filters)} AND", 1)
-            else:
-                relationship_query = f"""
-                    SELECT id, source_entity_id, target_entity_id, relationship_type, context, confidence
-                    FROM relationships
-                    WHERE source_entity_id IN ({placeholders})
-                      AND target_entity_id IN ({placeholders})
-                """
-                rel_params = list(entity_ids) + list(entity_ids)
+            if rel_filters:
+                relationship_query += " AND " + " AND ".join(rel_filters)
 
             cursor = await db.execute(relationship_query, rel_params)
             relationships = await cursor.fetchall()
@@ -185,7 +173,8 @@ async def get_entity_subgraph(
     depth: int = Query(1, ge=1, le=3, description="Number of relationship hops (1-3)"),
     limit: int = Query(50, ge=1, le=200, description="Maximum number of entities to return"),
     collection: Optional[str] = Query(None, description="Filter by collection"),
-    tags: Optional[str] = Query(None, description="Comma-separated tags (OR logic)")
+    tags: Optional[str] = Query(None, description="Comma-separated tags (OR logic)"),
+    current_user: User = Depends(get_current_user)
 ):
     """
     Get a subgraph centered on a specific entity
@@ -196,10 +185,15 @@ async def get_entity_subgraph(
     async with aiosqlite.connect(settings.sqlite_path) as db:
         db.row_factory = aiosqlite.Row
 
-        # Check if entity exists
+        # Check if entity exists in user's documents
         cursor = await db.execute(
-            "SELECT id, name, entity_type, description, mention_count FROM entities WHERE id = ?",
-            (entity_id,)
+            """SELECT DISTINCT e.id, e.name, e.entity_type, e.description, e.mention_count
+               FROM entities e
+               JOIN entity_mentions em ON e.id = em.entity_id
+               JOIN chunks c ON em.chunk_id = c.id
+               JOIN documents d ON c.document_id = d.id
+               WHERE e.id = ? AND d.user_id = ?""",
+            (entity_id, current_user.id)
         )
         center_entity = await cursor.fetchone()
 
@@ -218,45 +212,35 @@ async def get_entity_subgraph(
             if not current_layer or len(all_entities) >= limit:
                 break
 
-            # Find all relationships connected to current layer
+            # Find all relationships connected to current layer (filtered by user)
             placeholders = ','.join('?' * len(current_layer))
 
-            if collection or tags:
-                rel_query = f"""
-                    SELECT DISTINCT r.id, r.source_entity_id, r.target_entity_id, r.relationship_type, r.context, r.confidence
-                    FROM relationships r
-                    JOIN chunks c ON r.chunk_id = c.id
-                    JOIN documents d ON c.document_id = d.id
-                    WHERE (r.source_entity_id IN ({placeholders})
-                       OR r.target_entity_id IN ({placeholders}))
-                """
-                rel_params = list(current_layer) + list(current_layer)
+            # ALWAYS filter by user_id
+            rel_query = f"""
+                SELECT DISTINCT r.id, r.source_entity_id, r.target_entity_id, r.relationship_type, r.context, r.confidence
+                FROM relationships r
+                JOIN chunks c ON r.chunk_id = c.id
+                JOIN documents d ON c.document_id = d.id
+                WHERE (r.source_entity_id IN ({placeholders})
+                   OR r.target_entity_id IN ({placeholders}))
+                  AND d.user_id = ?
+            """
+            rel_params = list(current_layer) + list(current_layer) + [current_user.id]
 
-                # Add filters
-                sub_filters = []
-                if collection:
-                    sub_filters.append("d.collection = ?")
-                    rel_params.insert(0, collection)
-                if tags:
-                    tag_list = [tag.strip() for tag in tags.split(',') if tag.strip()]
-                    if tag_list:
-                        tag_placeholders_sub = ','.join('?' * len(tag_list))
-                        sub_filters.append(f"EXISTS (SELECT 1 FROM json_each(d.tags) WHERE value IN ({tag_placeholders_sub}))")
-                        if collection:
-                            rel_params[1:1] = tag_list
-                        else:
-                            rel_params[0:0] = tag_list
+            # Add filters
+            sub_filters = []
+            if collection:
+                sub_filters.append("d.collection = ?")
+                rel_params.append(collection)
+            if tags:
+                tag_list = [tag.strip() for tag in tags.split(',') if tag.strip()]
+                if tag_list:
+                    tag_placeholders_sub = ','.join('?' * len(tag_list))
+                    sub_filters.append(f"EXISTS (SELECT 1 FROM json_each(d.tags) WHERE value IN ({tag_placeholders_sub}))")
+                    rel_params.extend(tag_list)
 
-                if sub_filters:
-                    rel_query = rel_query.replace("WHERE", f"WHERE {' AND '.join(sub_filters)} AND", 1)
-            else:
-                rel_query = f"""
-                    SELECT id, source_entity_id, target_entity_id, relationship_type, context, confidence
-                    FROM relationships
-                    WHERE source_entity_id IN ({placeholders})
-                       OR target_entity_id IN ({placeholders})
-                """
-                rel_params = list(current_layer) + list(current_layer)
+            if sub_filters:
+                rel_query += " AND " + " AND ".join(sub_filters)
 
             cursor = await db.execute(rel_query, rel_params)
             relationships = await cursor.fetchall()
@@ -346,9 +330,12 @@ async def get_entity_subgraph(
 
 
 @router.get("/entity/{entity_id}")
-async def get_entity_detail(entity_id: str):
+async def get_entity_detail(
+    entity_id: str,
+    current_user: User = Depends(get_current_user)
+):
     """
-    Get detailed information about a specific entity
+    Get detailed information about a specific entity (from user's documents)
 
     Returns:
         - Entity metadata (id, name, type, description, mention_count)
@@ -358,19 +345,24 @@ async def get_entity_detail(entity_id: str):
     async with aiosqlite.connect(settings.sqlite_path) as db:
         db.row_factory = aiosqlite.Row
 
-        # Fetch entity
+        # Fetch entity (verify it exists in user's documents)
         cursor = await db.execute(
-            "SELECT id, name, entity_type, description, mention_count, variants, created_at FROM entities WHERE id = ?",
-            (entity_id,)
+            """SELECT DISTINCT e.id, e.name, e.entity_type, e.description, e.mention_count, e.variants, e.created_at
+               FROM entities e
+               JOIN entity_mentions em ON e.id = em.entity_id
+               JOIN chunks c ON em.chunk_id = c.id
+               JOIN documents d ON c.document_id = d.id
+               WHERE e.id = ? AND d.user_id = ?""",
+            (entity_id, current_user.id)
         )
         entity = await cursor.fetchone()
 
         if not entity:
             raise HTTPException(status_code=404, detail=f"Entity with id '{entity_id}' not found")
 
-        # Fetch relationships (outgoing and incoming)
+        # Fetch relationships (outgoing and incoming, filtered by user)
         cursor = await db.execute("""
-            SELECT
+            SELECT DISTINCT
                 r.id,
                 r.source_entity_id,
                 r.target_entity_id,
@@ -384,9 +376,11 @@ async def get_entity_detail(entity_id: str):
             FROM relationships r
             LEFT JOIN entities e_source ON r.source_entity_id = e_source.id
             LEFT JOIN entities e_target ON r.target_entity_id = e_target.id
-            WHERE r.source_entity_id = ? OR r.target_entity_id = ?
+            JOIN chunks c ON r.chunk_id = c.id
+            JOIN documents d ON c.document_id = d.id
+            WHERE (r.source_entity_id = ? OR r.target_entity_id = ?) AND d.user_id = ?
             ORDER BY r.confidence DESC
-        """, (entity_id, entity_id))
+        """, (entity_id, entity_id, current_user.id))
 
         relationships = await cursor.fetchall()
 
@@ -409,16 +403,16 @@ async def get_entity_detail(entity_id: str):
                 "confidence": rel["confidence"]
             })
 
-        # Fetch sample mentions (limit to 5 for performance)
+        # Fetch sample mentions (limit to 5 for performance, filtered by user)
         cursor = await db.execute("""
             SELECT em.context, c.content, d.title as document_title
             FROM entity_mentions em
             LEFT JOIN chunks c ON em.chunk_id = c.id
             LEFT JOIN documents d ON c.document_id = d.id
-            WHERE em.entity_id = ?
+            WHERE em.entity_id = ? AND d.user_id = ?
             ORDER BY em.id
             LIMIT 5
-        """, (entity_id,))
+        """, (entity_id, current_user.id))
 
         mentions = await cursor.fetchall()
 

@@ -4,13 +4,15 @@ API endpoints for tag management.
 import json
 import logging
 from typing import List, Optional
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel, field_validator
 import re
 import aiosqlite
 from qdrant_client import QdrantClient
 
 from core.config import settings
+from core.dependencies import get_current_user
+from models.user import User
 
 logger = logging.getLogger(__name__)
 
@@ -85,9 +87,12 @@ def validate_and_parse_tags(tags_str: str) -> List[str]:
 
 
 @router.get("", response_model=List[TagResponse])
-async def list_tags(collection: Optional[str] = Query(None)):
+async def list_tags(
+    collection: Optional[str] = Query(None),
+    current_user: User = Depends(get_current_user)
+):
     """
-    List all unique tags with document counts.
+    List all unique tags with document counts for the current user.
 
     Args:
         collection: Optional collection filter
@@ -97,24 +102,25 @@ async def list_tags(collection: Optional[str] = Query(None)):
     """
     try:
         async with aiosqlite.connect(settings.sqlite_path) as conn:
-            # Build query to extract and count tags
+            # Build query to extract and count tags (filtered by user)
             if collection:
                 query = """
                     SELECT tag, COUNT(DISTINCT d.id) as count
                     FROM documents d, json_each(d.tags) as tag
-                    WHERE d.collection = ?
+                    WHERE d.collection = ? AND d.user_id = ?
                     GROUP BY tag
                     ORDER BY count DESC, tag ASC
                 """
-                cursor = await conn.execute(query, (collection,))
+                cursor = await conn.execute(query, (collection, current_user.id))
             else:
                 query = """
                     SELECT tag, COUNT(DISTINCT d.id) as count
                     FROM documents d, json_each(d.tags) as tag
+                    WHERE d.user_id = ?
                     GROUP BY tag
                     ORDER BY count DESC, tag ASC
                 """
-                cursor = await conn.execute(query)
+                cursor = await conn.execute(query, (current_user.id,))
 
             results = await cursor.fetchall()
 
@@ -126,9 +132,12 @@ async def list_tags(collection: Optional[str] = Query(None)):
 
 
 @router.get("/documents/{document_id}/tags")
-async def get_document_tags(document_id: int):
+async def get_document_tags(
+    document_id: int,
+    current_user: User = Depends(get_current_user)
+):
     """
-    Get tags for a specific document.
+    Get tags for a specific document (only if owned by current user).
 
     Args:
         document_id: Document ID
@@ -138,11 +147,17 @@ async def get_document_tags(document_id: int):
     """
     try:
         async with aiosqlite.connect(settings.sqlite_path) as conn:
-            cursor = await conn.execute("SELECT tags FROM documents WHERE id = ?", (document_id,))
+            cursor = await conn.execute(
+                "SELECT tags, user_id FROM documents WHERE id = ?",
+                (document_id,)
+            )
             result = await cursor.fetchone()
 
             if not result:
                 raise HTTPException(status_code=404, detail="Document not found")
+
+            if result[1] != current_user.id:
+                raise HTTPException(status_code=403, detail="Not authorized to access this document")
 
             tags = json.loads(result[0]) if result[0] else []
             return {"document_id": document_id, "tags": tags}
@@ -155,9 +170,13 @@ async def get_document_tags(document_id: int):
 
 
 @router.put("/documents/{document_id}/tags")
-async def update_document_tags(document_id: int, tag_update: TagUpdate):
+async def update_document_tags(
+    document_id: int,
+    tag_update: TagUpdate,
+    current_user: User = Depends(get_current_user)
+):
     """
-    Update tags for a specific document.
+    Update tags for a specific document (only if owned by current user).
 
     Args:
         document_id: Document ID
@@ -168,10 +187,16 @@ async def update_document_tags(document_id: int, tag_update: TagUpdate):
     """
     try:
         async with aiosqlite.connect(settings.sqlite_path) as conn:
-            # Verify document exists
-            cursor = await conn.execute("SELECT id FROM documents WHERE id = ?", (document_id,))
-            if not await cursor.fetchone():
+            # Verify document exists and is owned by current user
+            cursor = await conn.execute(
+                "SELECT user_id FROM documents WHERE id = ?",
+                (document_id,)
+            )
+            result = await cursor.fetchone()
+            if not result:
                 raise HTTPException(status_code=404, detail="Document not found")
+            if result[0] != current_user.id:
+                raise HTTPException(status_code=403, detail="Not authorized to update this document")
 
             # Update SQLite
             tags_json = json.dumps(tag_update.tags)

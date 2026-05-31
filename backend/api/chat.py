@@ -1,13 +1,17 @@
 """
 Chat API endpoints (RAG)
 """
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from qdrant_client import QdrantClient
+from qdrant_client.models import Filter, FieldCondition, MatchAny
 import anthropic
+import aiosqlite
 
 from core.config import settings
 from core.logging_config import get_logger
+from core.dependencies import get_current_user
+from models.user import User
 from services.embedding import embed_text
 
 logger = get_logger(__name__)
@@ -26,21 +30,46 @@ class ChatResponse(BaseModel):
 
 
 @router.post("/", response_model=ChatResponse)
-async def chat(request: ChatRequest):
+async def chat(
+    request: ChatRequest,
+    current_user: User = Depends(get_current_user)
+):
     """
     Chat endpoint with RAG
 
     For MVP: Returns relevant context chunks.
     Phase 2: Integrate with LLM to generate responses.
     """
+    # Get user's document IDs
+    async with aiosqlite.connect(settings.sqlite_path) as db:
+        async with db.execute(
+            "SELECT id FROM documents WHERE user_id = ?",
+            (current_user.id,)
+        ) as cursor:
+            user_doc_ids = [row[0] for row in await cursor.fetchall()]
+
     # Generate query embedding
     query_embedding = embed_text(request.message)
 
-    # Search for relevant chunks
+    # Search for relevant chunks (filtered by user's documents)
     qdrant = QdrantClient(host=settings.qdrant_host, port=settings.qdrant_port)
+
+    # Build filter for user's documents
+    query_filter = None
+    if user_doc_ids:
+        query_filter = Filter(
+            must=[
+                FieldCondition(
+                    key="document_id",
+                    match=MatchAny(any=user_doc_ids)
+                )
+            ]
+        )
+
     results = qdrant.search(
         collection_name="recall_chunks",
         query_vector=query_embedding,
+        query_filter=query_filter,
         limit=request.num_context_chunks
     )
 
@@ -73,7 +102,10 @@ async def chat(request: ChatRequest):
 
 
 @router.post("/generate")
-async def chat_with_llm(request: ChatRequest):
+async def chat_with_llm(
+    request: ChatRequest,
+    current_user: User = Depends(get_current_user)
+):
     """
     Chat with LLM integration using Claude
 
@@ -86,14 +118,36 @@ async def chat_with_llm(request: ChatRequest):
         )
 
     try:
+        # Get user's document IDs
+        async with aiosqlite.connect(settings.sqlite_path) as db:
+            async with db.execute(
+                "SELECT id FROM documents WHERE user_id = ?",
+                (current_user.id,)
+            ) as cursor:
+                user_doc_ids = [row[0] for row in await cursor.fetchall()]
+
         # Generate query embedding
         query_embedding = embed_text(request.message)
 
-        # Search for relevant chunks
+        # Search for relevant chunks (filtered by user's documents)
         qdrant = QdrantClient(host=settings.qdrant_host, port=settings.qdrant_port)
+
+        # Build filter for user's documents
+        query_filter = None
+        if user_doc_ids:
+            query_filter = Filter(
+                must=[
+                    FieldCondition(
+                        key="document_id",
+                        match=MatchAny(any=user_doc_ids)
+                    )
+                ]
+            )
+
         results = qdrant.search(
             collection_name="recall_chunks",
             query_vector=query_embedding,
+            query_filter=query_filter,
             limit=request.num_context_chunks
         )
 

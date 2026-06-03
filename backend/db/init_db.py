@@ -189,6 +189,36 @@ async def init_sqlite():
             )
         """)
 
+        # Collaborators table (multi-user collaboration)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS collaborators (
+                id TEXT PRIMARY KEY,
+                resource_type TEXT NOT NULL,
+                resource_id TEXT NOT NULL,
+                collaborator_id TEXT NOT NULL,
+                permission TEXT NOT NULL,
+                added_by TEXT NOT NULL,
+                added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_accessed TIMESTAMP,
+                FOREIGN KEY (collaborator_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (added_by) REFERENCES users(id) ON DELETE CASCADE
+            )
+        """)
+
+        # Activity log table
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS activity_log (
+                id TEXT PRIMARY KEY,
+                resource_type TEXT NOT NULL,
+                resource_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                action TEXT NOT NULL,
+                details TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+        """)
+
         # Entity mentions table (links entities to chunks)
         await db.execute("""
             CREATE TABLE IF NOT EXISTS entity_mentions (
@@ -242,6 +272,11 @@ async def init_sqlite():
         await db.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_shared_links_token ON shared_links(token)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_shared_links_owner ON shared_links(owner_id)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_collaborators_resource ON collaborators(resource_type, resource_id)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_collaborators_user ON collaborators(collaborator_id)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_activity_resource ON activity_log(resource_type, resource_id)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_activity_user ON activity_log(user_id)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_activity_created ON activity_log(created_at)")
 
         await db.commit()
         logger.info("SQLite initialized")

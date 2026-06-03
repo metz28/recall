@@ -396,6 +396,85 @@ curl -X POST "http://localhost:8000/api/export-import/import" \
 - `include_embeddings`: Include vector embeddings in export (makes files large)
 - `include_graph`: Include entities and relationships in export
 
+### Collaboration
+
+Share documents and collections with other users with granular permissions.
+
+#### Add a Collaborator
+
+```bash
+curl -X POST "http://localhost:8000/api/collaboration/collaborators" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "resource_type": "document",
+    "resource_id": "doc-uuid",
+    "collaborator_email": "user@example.com",
+    "permission": "write",
+    "message": "Check out this document!"
+  }'
+```
+
+**Permission Levels:**
+- `read`: Can view the document and search within it
+- `write`: Can edit metadata, tags, and add/remove from collections
+- `admin`: Can share with others and remove collaborators
+
+#### List Collaborators
+
+```bash
+curl "http://localhost:8000/api/collaboration/collaborators/document/{document_id}" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+#### Update Collaborator Permission
+
+```bash
+curl -X PUT "http://localhost:8000/api/collaboration/collaborators/{collaborator_id}" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"permission": "admin"}'
+```
+
+#### Remove Collaborator
+
+```bash
+curl -X DELETE "http://localhost:8000/api/collaboration/collaborators/{collaborator_id}" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+#### View Shared With Me
+
+```bash
+# List all documents/collections shared with you
+curl "http://localhost:8000/api/collaboration/shared-with-me" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+#### Activity Log
+
+```bash
+# View activity log for a document
+curl "http://localhost:8000/api/collaboration/activity/document/{document_id}" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+#### Collaboration Stats
+
+```bash
+# Get collaboration statistics
+curl "http://localhost:8000/api/collaboration/stats" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+#### Check Permissions
+
+```bash
+# Check your permission level for a resource
+curl "http://localhost:8000/api/collaboration/permissions/document/{document_id}" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
 ## Roadmap
 
 ### Phase 1: MVP ✅
@@ -424,7 +503,7 @@ curl -X POST "http://localhost:8000/api/export-import/import" \
 - [x] Authentication and user management
 - [x] Shareable links for documents and searches
 - [x] Export/import functionality
-- [ ] Multi-user collaboration
+- [x] Multi-user collaboration
 - [ ] API key management
 - [ ] Advanced permissions
 

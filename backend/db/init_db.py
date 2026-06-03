@@ -170,6 +170,25 @@ async def init_sqlite():
             await db.execute("ALTER TABLE entities ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
             logger.info("Added created_at column to entities table")
 
+        # Shared links table
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS shared_links (
+                id TEXT PRIMARY KEY,
+                token TEXT UNIQUE NOT NULL,
+                resource_type TEXT NOT NULL,
+                resource_id TEXT,
+                owner_id TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP,
+                access_level TEXT DEFAULT 'view',
+                is_active BOOLEAN DEFAULT 1,
+                metadata TEXT,
+                view_count INTEGER DEFAULT 0,
+                last_accessed TIMESTAMP,
+                FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+        """)
+
         # Entity mentions table (links entities to chunks)
         await db.execute("""
             CREATE TABLE IF NOT EXISTS entity_mentions (
@@ -221,6 +240,8 @@ async def init_sqlite():
 
         await db.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_shared_links_token ON shared_links(token)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_shared_links_owner ON shared_links(owner_id)")
 
         await db.commit()
         logger.info("SQLite initialized")

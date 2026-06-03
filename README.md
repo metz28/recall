@@ -333,9 +333,9 @@ curl "http://localhost:8000/api/ingest/documents"
 - [x] Tag input and autocomplete UI
 - [x] Multi-select tag filtering
 
-### Phase 4: Collaboration & Export (Planned)
-- [ ] Authentication and user management
-- [ ] Shareable links for documents and searches
+### Phase 4: Collaboration & Export (In Progress)
+- [x] Authentication and user management
+- [x] Shareable links for documents and searches
 - [ ] Export/import functionality
 - [ ] Multi-user collaboration
 - [ ] API key management

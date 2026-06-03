@@ -309,6 +309,93 @@ curl "http://localhost:8000/api/graph/entity/{entity_id}"
 curl "http://localhost:8000/api/ingest/documents"
 ```
 
+### Export/Import
+
+Export and import your knowledge base for backups or migration.
+
+#### Export Data
+
+```bash
+# Export a single document
+curl -X POST "http://localhost:8000/api/export-import/export" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "export_type": "document",
+    "resource_id": "doc-uuid",
+    "include_embeddings": false,
+    "include_graph": true
+  }' > document-export.json
+
+# Export a collection
+curl -X POST "http://localhost:8000/api/export-import/export" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "export_type": "collection",
+    "resource_id": "research-papers",
+    "include_embeddings": false,
+    "include_graph": true
+  }' > collection-export.json
+
+# Export entire knowledge base
+curl -X POST "http://localhost:8000/api/export-import/export" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "export_type": "all",
+    "include_embeddings": false,
+    "include_graph": true
+  }' > full-export.json
+
+# Quick export (GET request)
+curl "http://localhost:8000/api/export-import/export/document/{document_id}" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  > document.json
+```
+
+#### Import Data
+
+```bash
+# Import with skip mode (default - skip existing documents)
+curl -X POST "http://localhost:8000/api/export-import/import" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d @export.json
+
+# Import with replace mode (replace existing documents)
+curl -X POST "http://localhost:8000/api/export-import/import" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "data": {...},
+    "import_mode": "replace",
+    "regenerate_embeddings": true
+  }'
+
+# Import to a different collection
+curl -X POST "http://localhost:8000/api/export-import/import" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "data": {...},
+    "import_mode": "skip",
+    "regenerate_embeddings": true,
+    "target_collection": "imported-data"
+  }'
+```
+
+**Import Modes:**
+- `skip`: Skip documents that already exist (default)
+- `replace`: Replace existing documents with imported versions
+- `merge`: Add imported data alongside existing documents
+
+**Options:**
+- `regenerate_embeddings`: Re-generate vector embeddings on import (default: true)
+- `target_collection`: Override the collection name for imported documents
+- `include_embeddings`: Include vector embeddings in export (makes files large)
+- `include_graph`: Include entities and relationships in export
+
 ## Roadmap
 
 ### Phase 1: MVP ✅
@@ -336,7 +423,7 @@ curl "http://localhost:8000/api/ingest/documents"
 ### Phase 4: Collaboration & Export (In Progress)
 - [x] Authentication and user management
 - [x] Shareable links for documents and searches
-- [ ] Export/import functionality
+- [x] Export/import functionality
 - [ ] Multi-user collaboration
 - [ ] API key management
 - [ ] Advanced permissions

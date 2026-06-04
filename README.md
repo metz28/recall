@@ -65,6 +65,209 @@ If you have existing documents before authentication was added:
 2. The first real user you create can claim or re-upload these documents
 3. Or use admin tools to transfer document ownership (requires manual database access)
 
+## API Key Management
+
+Recall supports API key authentication for programmatic access, allowing you to integrate Recall with scripts, automation tools, and other applications.
+
+### Creating API Keys
+
+API keys provide full access to your account and can be used in place of JWT tokens:
+
+```bash
+# First, authenticate and get a JWT token
+TOKEN=$(curl -X POST "http://localhost:8000/api/auth/login" \
+  -d "email=user@example.com&password=yourpassword" | jq -r '.access_token')
+
+# Create an API key
+curl -X POST "http://localhost:8000/api/v1/api-keys" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "My Script Key",
+    "expires_at": null
+  }'
+```
+
+**Important:** The full API key is shown only once when created. Save it securely!
+
+### Using API Keys
+
+Use your API key in the Authorization header just like a JWT token:
+
+```bash
+# Use API key for authentication
+API_KEY="recall_sk_prod_a1b2c3d4..."
+
+curl "http://localhost:8000/api/search?query=machine+learning" \
+  -H "Authorization: Bearer $API_KEY"
+```
+
+API keys work with all endpoints that accept JWT authentication.
+
+### Managing API Keys
+
+```bash
+# List your API keys (only shows prefixes for security)
+curl "http://localhost:8000/api/v1/api-keys" \
+  -H "Authorization: Bearer $TOKEN"
+
+# Disable an API key without deleting it
+curl -X PUT "http://localhost:8000/api/v1/api-keys/{key_id}/toggle" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"is_active": false}'
+
+# Delete an API key
+curl -X DELETE "http://localhost:8000/api/v1/api-keys/{key_id}" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+### API Key Features
+
+- **Full Access:** API keys grant the same permissions as the owning user
+- **Optional Expiration:** Set expiration dates for temporary keys
+- **Enable/Disable:** Soft-disable keys without deletion
+- **Activity Tracking:** last_used_at timestamp updates on each use
+- **Secure Storage:** Keys are hashed with bcrypt (SHA256 + bcrypt for long keys)
+
+## Role-Based Access Control (RBAC)
+
+Recall includes a flexible RBAC system for fine-grained permission management, perfect for team collaboration and document sharing.
+
+### System Roles
+
+Five predefined roles are available out of the box:
+
+1. **Viewer**: Read-only access to documents, collections, and search
+   - Permissions: `document:read`, `collection:read`, `search:execute`
+
+2. **Editor**: Can view and edit documents and collections
+   - Permissions: All viewer permissions + `document:write`, `collection:write`, `export:create`
+
+3. **Analyst**: Advanced search and analytics
+   - Permissions: Viewer permissions + `search:advanced`, `graph:explore`, `entity:view`, `export:create`
+
+4. **Admin**: Full management except document deletion
+   - Permissions: Editor permissions + `document:share`, `collection:manage`, `collaborator:add`, `collaborator:remove`, `role:assign`
+
+5. **Owner**: Complete control (automatic for document creators)
+   - Permissions: `*:*` (wildcard for all permissions)
+
+### Permission Format
+
+Permissions use the format `{resource}:{action}`:
+- `document:read`, `document:write`, `document:delete`, `document:share`
+- `collection:read`, `collection:write`, `collection:manage`
+- `search:execute`, `search:advanced`
+- `collaborator:add`, `collaborator:remove`
+- `role:assign`
+- `*:*` (wildcard for owners)
+
+### Creating Custom Roles
+
+Create roles with specific permission combinations:
+
+```bash
+# Create a custom role
+curl -X POST "http://localhost:8000/api/v1/roles" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "research_analyst",
+    "display_name": "Research Analyst",
+    "description": "Can search and export but not edit",
+    "permissions": [
+      "document:read",
+      "search:execute",
+      "search:advanced",
+      "graph:explore",
+      "export:create"
+    ]
+  }'
+```
+
+### Assigning Roles
+
+Assign roles to users for specific documents or collections:
+
+```bash
+# Assign viewer role to a user for a specific document
+curl -X POST "http://localhost:8000/api/v1/role-assignments" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "role_id": "{role_id}",
+    "user_id": "{collaborator_user_id}",
+    "resource_type": "document",
+    "resource_id": "{document_id}"
+  }'
+
+# Assign global role (applies to all resources)
+curl -X POST "http://localhost:8000/api/v1/role-assignments" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "role_id": "{role_id}",
+    "user_id": "{user_id}",
+    "resource_type": "global",
+    "resource_id": null
+  }'
+```
+
+### Permission Checking
+
+Check if a user has specific permissions:
+
+```bash
+# Check permission
+curl -X POST "http://localhost:8000/api/v1/permissions/check" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "{user_id}",
+    "resource_type": "document",
+    "resource_id": "{document_id}",
+    "permission": "document:write"
+  }'
+
+# Get all permissions for current user on a resource
+curl "http://localhost:8000/api/v1/permissions/me/document/{document_id}" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+### Managing Roles
+
+```bash
+# List all roles (system and custom)
+curl "http://localhost:8000/api/v1/roles" \
+  -H "Authorization: Bearer $TOKEN"
+
+# Get role details
+curl "http://localhost:8000/api/v1/roles/{role_id}" \
+  -H "Authorization: Bearer $TOKEN"
+
+# Update custom role
+curl -X PUT "http://localhost:8000/api/v1/roles/{role_id}" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "description": "Updated description",
+    "permissions": ["document:read", "search:execute"]
+  }'
+
+# Delete custom role
+curl -X DELETE "http://localhost:8000/api/v1/roles/{role_id}" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+### Backward Compatibility
+
+The existing collaboration system works seamlessly with RBAC:
+- Adding collaborators with `read`, `write`, or `admin` permissions automatically creates corresponding role assignments
+- Old permission: `read` → Role: `viewer`
+- Old permission: `write` → Role: `editor`
+- Old permission: `admin` → Role: `admin`
+
 ## Quick Start
 
 ### Option 1: Simple Local Setup (Recommended)
@@ -499,13 +702,13 @@ curl "http://localhost:8000/api/collaboration/permissions/document/{document_id}
 - [x] Tag input and autocomplete UI
 - [x] Multi-select tag filtering
 
-### Phase 4: Collaboration & Export (In Progress)
+### Phase 4: Collaboration & Export (Complete)
 - [x] Authentication and user management
 - [x] Shareable links for documents and searches
 - [x] Export/import functionality
-- [x] Multi-user collaboration
-- [ ] API key management
-- [ ] Advanced permissions
+- [x] Multi-user collaboration with activity tracking
+- [x] API key management for programmatic access
+- [x] Role-Based Access Control (RBAC) with custom roles
 
 ## Configuration
 

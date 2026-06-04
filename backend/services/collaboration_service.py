@@ -68,7 +68,7 @@ async def add_collaborator(
     user_id: str,
     collab_data: CollaboratorAdd
 ) -> CollaboratorResponse:
-    """Add a collaborator to a resource"""
+    """Add a collaborator to a resource (also creates RBAC role assignment)"""
     async with aiosqlite.connect(settings.sqlite_path) as db:
         db.row_factory = aiosqlite.Row
 
@@ -137,6 +137,12 @@ async def add_collaborator(
             collab_id, collab_data.resource_type, collab_data.resource_id,
             collaborator_id, collab_data.permission, user_id, created_at
         ))
+
+        # Also create RBAC role assignment (backward compatibility + new system)
+        await _create_role_assignment_for_collaborator(
+            db, collab_data.resource_type, collab_data.resource_id,
+            collaborator_id, collab_data.permission, user_id, created_at
+        )
 
         # Log activity
         await log_activity(
@@ -406,3 +412,59 @@ async def get_activity_log(
             ))
 
         return activities
+
+
+async def _create_role_assignment_for_collaborator(
+    db: aiosqlite.Connection,
+    resource_type: str,
+    resource_id: str,
+    collaborator_id: str,
+    permission: str,
+    added_by: str,
+    added_at: datetime
+):
+    """
+    Create a role assignment when adding a collaborator.
+    Maps old permissions to new RBAC roles.
+    """
+    # Map old permission to role name
+    permission_to_role = {
+        "read": "viewer",
+        "write": "editor",
+        "admin": "admin"
+    }
+
+    role_name = permission_to_role.get(permission)
+    if not role_name:
+        logger.warning(f"Unknown permission type: {permission}, skipping role assignment")
+        return
+
+    # Get role ID
+    cursor = await db.execute("SELECT id FROM roles WHERE name = ?", (role_name,))
+    role = await cursor.fetchone()
+
+    if not role:
+        logger.warning(f"Role {role_name} not found, skipping role assignment")
+        return
+
+    role_id = role[0]
+
+    # Check if assignment already exists
+    cursor = await db.execute("""
+        SELECT id FROM role_assignments
+        WHERE role_id = ? AND user_id = ? AND resource_type = ? AND resource_id = ?
+    """, (role_id, collaborator_id, resource_type, resource_id))
+
+    if await cursor.fetchone():
+        return  # Assignment already exists
+
+    # Create role assignment
+    assignment_id = str(uuid.uuid4())
+    await db.execute("""
+        INSERT INTO role_assignments (
+            id, role_id, user_id, resource_type, resource_id,
+            assigned_by, assigned_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (assignment_id, role_id, collaborator_id, resource_type, resource_id, added_by, added_at))
+
+    logger.info(f"Created role assignment {role_name} for collaborator {collaborator_id}")

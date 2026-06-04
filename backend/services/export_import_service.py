@@ -11,7 +11,7 @@ from qdrant_client import QdrantClient
 from core.config import settings
 from core.logging_config import get_logger
 from models.export_import import DocumentExport, ExportRequest, ImportRequest
-from services.embedding import EmbeddingService
+from services.embedding import embed_text
 from services.chunking import chunk_text
 
 logger = get_logger(__name__)
@@ -181,7 +181,6 @@ async def import_documents(
         "total_relationships": 0
     }
 
-    embedding_service = EmbeddingService() if regenerate_embeddings else None
     client = QdrantClient(host=settings.qdrant_host, port=settings.qdrant_port) if regenerate_embeddings else None
 
     for doc_data in documents:
@@ -246,9 +245,9 @@ async def import_documents(
                     """, (chunk_id, doc_id, chunk_index, content))
 
                     # Generate and store embeddings if requested
-                    if regenerate_embeddings and embedding_service and client:
+                    if regenerate_embeddings and client:
                         try:
-                            embedding = embedding_service.embed_text(content)
+                            embedding = embed_text(content)
 
                             client.upsert(
                                 collection_name="recall_chunks",

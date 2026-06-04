@@ -14,7 +14,7 @@ from models.user import User
 from core.dependencies import get_current_user
 from core.config import settings
 from services import share_service
-from services.embedding import EmbeddingService
+from services.embedding import embed_text
 from qdrant_client import QdrantClient
 from qdrant_client.models import Filter, FieldCondition, MatchValue
 
@@ -216,8 +216,7 @@ async def get_shared_search(token: str):
     owner_id = share['owner_id']
 
     # Perform the search (scoped to owner's documents)
-    embedding_service = EmbeddingService()
-    query_vector = embedding_service.embed_text(query)
+    query_vector = embed_text(query)
 
     # Build Qdrant filter
     filter_conditions = [

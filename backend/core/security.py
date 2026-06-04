@@ -1,6 +1,8 @@
 """Security utilities for authentication."""
 from datetime import datetime, timedelta
 from typing import Optional
+import secrets
+import hashlib
 
 import jwt
 from passlib.context import CryptContext
@@ -71,3 +73,51 @@ def decode_access_token(token: str) -> Optional[dict]:
         return None
     except jwt.InvalidTokenError:
         return None
+
+
+def generate_api_key() -> tuple[str, str, str]:
+    """
+    Generate a new API key with hash and prefix.
+
+    Format: recall_sk_{environment}_{64_hex_chars}
+
+    Returns:
+        Tuple of (full_key, key_hash, key_prefix)
+        - full_key: Complete API key to show user once
+        - key_hash: Bcrypt hash to store in database
+        - key_prefix: First 16 chars for display (e.g., "recall_sk_prod_a")
+    """
+    # Generate random 32 bytes (64 hex chars)
+    random_part = secrets.token_hex(32)
+
+    # Use 'prod' as environment (could be configurable in future)
+    environment = "prod"
+
+    # Construct full key
+    full_key = f"recall_sk_{environment}_{random_part}"
+
+    # Hash the API key with SHA256 first (to get within bcrypt's 72-byte limit)
+    # Then hash with bcrypt for secure storage
+    sha256_key = hashlib.sha256(full_key.encode()).hexdigest()
+    key_hash = pwd_context.hash(sha256_key)
+
+    # Extract prefix (first 16 chars)
+    key_prefix = full_key[:16]
+
+    return full_key, key_hash, key_prefix
+
+
+def verify_api_key_hash(key: str, hash: str) -> bool:
+    """
+    Verify an API key against its bcrypt hash.
+
+    Args:
+        key: Plain API key to verify
+        hash: Bcrypt hash from database
+
+    Returns:
+        True if key matches hash, False otherwise
+    """
+    # Hash the API key with SHA256 first (matching generation process)
+    sha256_key = hashlib.sha256(key.encode()).hexdigest()
+    return pwd_context.verify(sha256_key, hash)

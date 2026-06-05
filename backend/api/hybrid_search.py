@@ -1,11 +1,13 @@
 """
 Hybrid search API endpoint combining vector and graph retrieval
 """
-from fastapi import APIRouter, Query, HTTPException
+from fastapi import APIRouter, Query, HTTPException, Depends
 from pydantic import BaseModel, Field
 from typing import Optional
 
 from core.config import settings
+from core.dependencies import get_current_user
+from models.user import User
 from services.hybrid_search import hybrid_search
 
 router = APIRouter()
@@ -73,7 +75,8 @@ async def search_hybrid(
         default=True,
         description="Enable entity-based graph expansion"
     ),
-    collection: Optional[str] = Query(None, description="Filter by collection")
+    collection: Optional[str] = Query(None, description="Filter by collection"),
+    current_user: User = Depends(get_current_user)
 ):
     """
     Hybrid search combining vector similarity and knowledge graph context
@@ -104,6 +107,7 @@ async def search_hybrid(
     try:
         results = await hybrid_search(
             query=query,
+            user_id=current_user.id,
             limit=limit,
             alpha=alpha,
             graph_depth=graph_depth,

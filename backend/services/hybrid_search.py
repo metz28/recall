@@ -21,6 +21,7 @@ logger = get_logger(__name__)
 
 async def hybrid_search(
     query: str,
+    user_id: str,
     limit: int = 10,
     alpha: float = 0.7,
     graph_depth: int = 1,
@@ -35,6 +36,7 @@ async def hybrid_search(
 
     Args:
         query: Search query
+        user_id: User ID to filter results by ownership
         limit: Number of final results to return
         alpha: Weight for vector score (0.0-1.0). Final score = alpha * vector + (1-alpha) * graph
         graph_depth: Graph traversal depth for entity expansion (0-3 hops)
@@ -64,8 +66,13 @@ async def hybrid_search(
     query_embedding = embed_text(query)
     qdrant = QdrantClient(host=settings.qdrant_host, port=settings.qdrant_port)
 
-    # Build query filter for collection and tags
-    filter_conditions = []
+    # Build query filter for user_id, collection and tags
+    filter_conditions = [
+        FieldCondition(
+            key="user_id",
+            match=MatchValue(value=user_id)
+        )
+    ]
 
     if collection:
         filter_conditions.append(

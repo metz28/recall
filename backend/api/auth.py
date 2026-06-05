@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Depends, status
 from core.config import settings
 from core.dependencies import get_current_user
 from core.security import hash_password, verify_password, create_access_token
-from models.user import User, UserCreate, UserResponse
+from models.user import User, UserCreate, UserLogin, UserResponse
 from core.logging_config import get_logger
 
 router = APIRouter()
@@ -87,13 +87,12 @@ async def register(user_data: UserCreate):
 
 
 @router.post("/login", response_model=dict)
-async def login(email: str, password: str):
+async def login(credentials: UserLogin):
     """
     Login with email and password to receive JWT token.
 
     Args:
-        email: User email
-        password: User password
+        credentials: User login credentials (email and password)
 
     Returns:
         JWT access token and user info
@@ -107,7 +106,7 @@ async def login(email: str, password: str):
         # Fetch user by email
         cursor = await db.execute(
             "SELECT * FROM users WHERE email = ? AND is_active = 1",
-            (email,)
+            (credentials.email,)
         )
         row = await cursor.fetchone()
 
@@ -118,7 +117,7 @@ async def login(email: str, password: str):
             )
 
         # Verify password
-        if not verify_password(password, row["hashed_password"]):
+        if not verify_password(credentials.password, row["hashed_password"]):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid email or password"
@@ -130,7 +129,7 @@ async def login(email: str, password: str):
             email=row["email"]
         )
 
-        logger.info(f"User logged in: {row['username']} ({email})")
+        logger.info(f"User logged in: {row['username']} ({credentials.email})")
 
         return {
             "access_token": access_token,

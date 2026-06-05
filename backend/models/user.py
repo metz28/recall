@@ -15,6 +15,12 @@ class UserCreate(UserBase):
     password: str = Field(..., min_length=8)
 
 
+class UserLogin(BaseModel):
+    """User login model."""
+    email: EmailStr
+    password: str = Field(..., min_length=1)
+
+
 class UserResponse(UserBase):
     """User response model (no password)."""
     id: str

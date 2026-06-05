@@ -4,8 +4,9 @@ Notion API endpoints
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 from typing import Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 import aiosqlite
+import json
 from datetime import datetime
 
 from core.config import settings
@@ -15,6 +16,9 @@ from models.user import User
 from services.notion_service import get_notion_service
 from services.chunking import chunk_text
 from services.embedding import embed_texts
+from services.entity_extraction import extract_entities_batch, deduplicate_entities
+from services.llm_entity_extraction import extract_entities_batch_llm
+from services.graph_service import store_entities_in_graph
 from models.document import DocumentMetadata
 from qdrant_client import QdrantClient
 
@@ -116,6 +120,42 @@ async def import_notion_page(
         doc_metadata.num_chunks = len(chunks)
         logger.info(f"Created {len(chunks)} chunks")
 
+        # Extract entities from chunks (if enabled)
+        all_entity_mentions = []
+        if settings.entity_extraction_enabled:
+            try:
+                extraction_method = settings.entity_extraction_method.lower()
+                logger.info(
+                    f"Extracting entities from {len(chunks)} chunks using {extraction_method}..."
+                )
+
+                chunk_texts = [c["text"] for c in chunks]
+
+                if extraction_method == "llm":
+                    chunk_entities = extract_entities_batch_llm(
+                        chunk_texts,
+                        entity_types=settings.entity_types_set,
+                        model_name=settings.llm_model,
+                        context_window=settings.entity_context_window,
+                    )
+                else:  # default to spacy
+                    chunk_entities = extract_entities_batch(
+                        chunk_texts,
+                        entity_types=settings.entity_types_set,
+                        model_name=settings.spacy_model,
+                        context_window=settings.entity_context_window,
+                    )
+
+                # Flatten all mentions for deduplication
+                for chunk_idx, entities in enumerate(chunk_entities):
+                    for entity in entities:
+                        entity["chunk_index"] = chunk_idx
+                        all_entity_mentions.append(entity)
+                logger.info(f"Extracted {len(all_entity_mentions)} entity mentions")
+            except Exception as e:
+                logger.error(f"Entity extraction failed: {e}")
+                # Continue with ingestion even if entity extraction fails
+
         # Generate embeddings
         logger.info(f"Generating embeddings...")
         chunk_texts = [c["text"] for c in chunks]
@@ -152,8 +192,10 @@ async def import_notion_page(
             )
 
             # Insert chunks
+            chunk_id_map = {}
             for i, chunk in enumerate(chunks):
                 chunk_id = f"{doc_metadata.id}-chunk-{i}"
+                chunk_id_map[i] = chunk_id
                 await db.execute(
                     """
                     INSERT INTO chunks (
@@ -171,6 +213,86 @@ async def import_notion_page(
                         chunk["end"]
                     )
                 )
+
+            # Store entities if extracted
+            if all_entity_mentions and settings.entity_extraction_enabled:
+                try:
+                    # Deduplicate entities
+                    entities_map = deduplicate_entities(all_entity_mentions)
+                    logger.info(f"Found {len(entities_map)} unique entities")
+
+                    # Store unique entities
+                    entity_id_map = {}  # Map normalized_name -> entity_id
+                    for norm_name, entity_data in entities_map.items():
+                        entity_id = str(uuid4())
+                        entity_id_map[norm_name] = entity_id
+
+                        await db.execute(
+                            """INSERT OR REPLACE INTO entities
+                               (id, name, entity_type, mention_count, variants)
+                               VALUES (?, ?, ?, ?, ?)""",
+                            (
+                                entity_id,
+                                entity_data['canonical_name'],
+                                entity_data['type'],
+                                entity_data['mention_count'],
+                                json.dumps(entity_data['variants'])
+                            )
+                        )
+
+                    # Store entity mentions
+                    for mention in all_entity_mentions:
+                        chunk_idx = mention['chunk_index']
+                        chunk_id = chunk_id_map[chunk_idx]
+                        entity_id = entity_id_map[mention['normalized_name']]
+
+                        mention_id = str(uuid4())
+                        await db.execute(
+                            """INSERT INTO entity_mentions
+                               (id, entity_id, chunk_id, context, position)
+                               VALUES (?, ?, ?, ?, ?)""",
+                            (
+                                mention_id,
+                                entity_id,
+                                chunk_id,
+                                mention.get('context', ''),
+                                mention.get('start', 0)
+                            )
+                        )
+
+                    logger.info(f"Stored entities in database")
+
+                    # Store in Kuzu graph
+                    extraction_method = settings.entity_extraction_method.lower()
+                    chunk_texts = [c["text"] for c in chunks]
+
+                    if extraction_method == "llm":
+                        chunk_entities_for_graph = extract_entities_batch_llm(
+                            chunk_texts,
+                            entity_types=settings.entity_types_set,
+                            model_name=settings.llm_model,
+                        )
+                    else:
+                        chunk_entities_for_graph = extract_entities_batch(
+                            chunk_texts,
+                            entity_types=settings.entity_types_set,
+                            model_name=settings.spacy_model
+                        )
+
+                    for chunk_idx, chunk_entities in enumerate(chunk_entities_for_graph):
+                        if chunk_entities:
+                            chunk_id = chunk_id_map[chunk_idx]
+                            store_entities_in_graph(
+                                chunk_entities,
+                                chunk_id,
+                                chunks[chunk_idx]["text"]
+                            )
+
+                    logger.info(f"Stored entities in graph")
+
+                except Exception as e:
+                    logger.error(f"Failed to store entities: {e}")
+                    # Continue even if entity storage fails
 
             await db.commit()
 

@@ -272,9 +272,15 @@ async def get_user_assignments(
     """
     # Users can view their own assignments
     if user_id != current_user.id:
-        # TODO: Check if current_user has admin permission
-        # For now, allow any authenticated user to view
-        pass
+        # Check if current user has admin permission
+        has_permission = await check_permission(
+            current_user.id, "global", None, "role:assign"
+        )
+        if not has_permission:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to view other users' role assignments"
+            )
 
     try:
         assignments = await get_user_role_assignments(user_id)

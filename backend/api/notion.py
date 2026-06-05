@@ -1,7 +1,7 @@
 """
 Notion API endpoints
 """
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 from typing import Optional
 from uuid import UUID
@@ -9,7 +9,9 @@ import aiosqlite
 from datetime import datetime
 
 from core.config import settings
+from core.dependencies import get_current_user
 from core.logging_config import get_logger
+from models.user import User
 from services.notion_service import get_notion_service
 from services.chunking import chunk_text
 from services.embedding import embed_texts
@@ -61,7 +63,10 @@ class NotionSearchResponse(BaseModel):
 
 
 @router.post("/import-page", response_model=NotionPageResponse)
-async def import_notion_page(request: NotionPageRequest):
+async def import_notion_page(
+    request: NotionPageRequest,
+    current_user: User = Depends(get_current_user)
+):
     """
     Import a Notion page and ingest it into the knowledge base
 
@@ -71,6 +76,8 @@ async def import_notion_page(request: NotionPageRequest):
     3. Generates embeddings
     4. Stores in database and vector store
     5. Extracts entities (if enabled)
+
+    Requires authentication. Imported documents are associated with the current user.
     """
     try:
         # Initialize Notion service
@@ -124,9 +131,9 @@ async def import_notion_page(request: NotionPageRequest):
                 INSERT INTO documents (
                     id, title, source_type, source_path, file_type,
                     file_size, num_chunks, created_at, updated_at,
-                    tags, collection
+                    tags, collection, user_id
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     str(doc_metadata.id),
@@ -139,7 +146,8 @@ async def import_notion_page(request: NotionPageRequest):
                     doc_metadata.created_at.isoformat(),
                     doc_metadata.updated_at.isoformat(),
                     ",".join(doc_metadata.tags),
-                    doc_metadata.collection
+                    doc_metadata.collection,
+                    current_user.id
                 )
             )
 
@@ -173,17 +181,25 @@ async def import_notion_page(request: NotionPageRequest):
         points = []
         for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
             chunk_id = f"{doc_metadata.id}-chunk-{i}"
+            payload = {
+                "document_id": str(doc_metadata.id),
+                "chunk_index": i,
+                "content": chunk["text"],
+                "document_title": doc_metadata.title,
+                "source_type": "notion",
+                "page_id": request.page_id,
+                "user_id": current_user.id
+            }
+
+            if doc_metadata.tags:
+                payload["tags"] = doc_metadata.tags
+            if doc_metadata.collection:
+                payload["collection"] = doc_metadata.collection
+
             points.append({
                 "id": chunk_id,
                 "vector": embedding,
-                "payload": {
-                    "document_id": str(doc_metadata.id),
-                    "chunk_index": i,
-                    "content": chunk["text"],
-                    "document_title": doc_metadata.title,
-                    "source_type": "notion",
-                    "page_id": request.page_id
-                }
+                "payload": payload
             })
 
         qdrant.upsert(
@@ -208,12 +224,17 @@ async def import_notion_page(request: NotionPageRequest):
 
 
 @router.post("/search", response_model=NotionSearchResponse)
-async def search_notion_workspace(request: NotionSearchRequest):
+async def search_notion_workspace(
+    request: NotionSearchRequest,
+    current_user: User = Depends(get_current_user)
+):
     """
     Search for pages in Notion workspace
 
     Returns a list of pages matching the query.
     Use an empty query to get all accessible pages.
+
+    Requires authentication.
     """
     try:
         # Initialize Notion service
@@ -250,11 +271,13 @@ async def search_notion_workspace(request: NotionSearchRequest):
 
 
 @router.get("/status")
-async def notion_status():
+async def notion_status(current_user: User = Depends(get_current_user)):
     """
     Check Notion integration status
 
     Returns whether Notion API key is configured.
+
+    Requires authentication.
     """
     has_api_key = settings.notion_api_key is not None and settings.notion_api_key != ""
 
